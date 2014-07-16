@@ -59,6 +59,13 @@ public class DeployResult {
         }
         success = new SimpleStringProperty(String.valueOf(result.isSuccess()));
     }
+    
+    public DeployResult(String component, String message) {
+        this.component = new SimpleStringProperty(component);
+        statusCode = new SimpleStringProperty("UNKNOWN");
+        this.message = new SimpleStringProperty(message);
+        success = new SimpleStringProperty("false");
+    }
 
     public String getComponent() {
         return component.get();

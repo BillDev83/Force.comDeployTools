@@ -29,6 +29,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.ResourceBundle;
@@ -113,22 +114,56 @@ public class MainUIController implements Initializable {
 
             MetadataConnection sourceMetaConn = getMetaConnection(saved.get(source.getText()));
             MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
+            
 
             for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
 
-                Set<String> children = new TreeSet<>();
+                String prefix = "";
+                ListMetadataQuery query = new ListMetadataQuery();
+                query.setType(parent.getValue());
+                FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[] {query}, 29.0);
+                prefix = props[0].getNamespacePrefix();
+                if(!"".equals(prefix)) {
+                    prefix += "__";
+                }
+                
+                List<String> children = new ArrayList<>();
                 for (TreeItem<String> child : parent.getChildren()) {
-                    children.add(child.getValue());
+                    String v = child.getValue();
+                    if(!"".equals(prefix) && v.contains(".")) {
+                        String[] parts = v.split("\\.");
+                        if(parts[0].endsWith("__c")) {
+                            parts[0] = prefix + parts[0];
+                        }
+                        if(parts[1].endsWith("__c")) {
+                            parts[1] = prefix + parts[1];
+                        }
+                        v = parts[0] + "." + parts[1];
+                    }
+                    children.add(v);
                 }
 
                 ReadResult readResult = sourceMetaConn.readMetadata(parent.getValue(), children.toArray(new String[]{}));
-                Metadata[] mdInfo = readResult.getRecords();
-
-                SaveResult[] saveResult = targetMetaConn.createMetadata(mdInfo);
-
+                List<Metadata> metadata = new ArrayList<>();
                 List<DeployResult> resultsList = new ArrayList<>();
-                for (SaveResult sr : saveResult) {
-                    resultsList.add(new DeployResult(sr));
+                int i = 0;
+                for(Metadata m : readResult.getRecords()) {
+                    if(m != null) {
+                        m.setFullName(m.getFullName().replace(prefix, ""));
+                        metadata.add(m);
+                    } else {
+                        log.log(Level.WARNING, "Metadata not read! ({0} not created!)", children.get(i));
+                        resultsList.add(new DeployResult(children.get(i), "Metadata not read!"));
+                    }
+                    i++;
+                }
+                
+                if(!metadata.isEmpty()) {
+                    SaveResult[] saveResult = targetMetaConn.createMetadata(metadata.toArray(new Metadata[] {}));
+
+                    for (SaveResult sr : saveResult) {
+                        resultsList.add(new DeployResult(sr));
+                    }
                 }
 
                 deployResults.addAll(resultsList);
