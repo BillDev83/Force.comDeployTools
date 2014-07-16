@@ -101,7 +101,6 @@ public class MainUIController implements Initializable {
         initProjects();
         initMetaSource();
         initMetaTarget();
-        // initLoadMeta();
         initResults();
     }
 
