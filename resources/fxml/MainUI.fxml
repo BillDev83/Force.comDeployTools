@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.*?>
+<?import java.lang.*?>
+<?import java.util.*?>
+<?import javafx.scene.*?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<AnchorPane prefHeight="900.0" prefWidth="1300.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.force.deploy.tools.MainUIController">
+   <children>
+      <Button layoutX="14.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnAddAction" text="Add" />
+      <ListView fx:id="projects" layoutX="14.0" layoutY="39.0" prefHeight="420.0" prefWidth="250.0" />
+      <TreeView fx:id="metaSource" layoutX="296.0" layoutY="39.0" prefHeight="420.0" prefWidth="250.0" />
+      <TreeView fx:id="metaTarget" layoutX="625.0" layoutY="39.0" prefHeight="420.0" prefWidth="250.0" />
+      <ComboBox fx:id="target" layoutX="1015.0" layoutY="82.0" prefWidth="150.0" promptText="-- Select --" />
+      <Label layoutX="965.0" layoutY="86.0" text="Target:" />
+      <Label layoutX="964.0" layoutY="51.0" text="Source:" />
+      <Label fx:id="source" layoutX="1015.0" layoutY="51.0" />
+      <Button layoutX="957.0" layoutY="126.0" mnemonicParsing="false" onAction="#btnCreateAction" text="Create" />
+      <TableView fx:id="results" layoutX="14.0" layoutY="491.0" prefHeight="398.0" prefWidth="1273.0" />
+      <MenuButton fx:id="loadMeta" layoutX="296.0" layoutY="14.0" mnemonicParsing="false" text="-- Select Metadata Type --" />
+      <Button layoutX="1015.0" layoutY="126.0" mnemonicParsing="false" onAction="#btnDeleteAction" text="Delete" />
+   </children>
+</AnchorPane>
