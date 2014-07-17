@@ -8,6 +8,7 @@ package com.force.deploy.tools;
 import com.force.deploy.tools.utils.DeployResult;
 import com.force.deploy.tools.utils.Project;
 import com.force.deploy.tools.utils.Serializer;
+import com.sforce.soap.metadata.AsyncResult;
 import com.sforce.soap.metadata.DeleteResult;
 import com.sforce.soap.metadata.DescribeMetadataObject;
 import com.sforce.soap.metadata.DescribeMetadataResult;
@@ -15,21 +16,33 @@ import com.sforce.soap.metadata.FileProperties;
 import com.sforce.soap.metadata.ListMetadataQuery;
 import com.sforce.soap.metadata.Metadata;
 import com.sforce.soap.metadata.MetadataConnection;
+import com.sforce.soap.metadata.PackageTypeMembers;
 import com.sforce.soap.metadata.ReadResult;
+import com.sforce.soap.metadata.RetrieveMessage;
+import com.sforce.soap.metadata.RetrieveRequest;
+import com.sforce.soap.metadata.RetrieveResult;
+import com.sforce.soap.metadata.RetrieveStatus;
 import com.sforce.soap.metadata.SaveResult;
 import com.sforce.soap.partner.LoginResult;
 import com.sforce.soap.partner.PartnerConnection;
 import com.sforce.ws.ConnectionException;
 import com.sforce.ws.ConnectorConfig;
 import java.awt.Desktop;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
+import java.nio.channels.ReadableByteChannel;
+import java.nio.channels.WritableByteChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.ResourceBundle;
@@ -107,69 +120,20 @@ public class MainUIController implements Initializable {
 
     @FXML
     private void btnCreateAction(ActionEvent event) {
-        try {
-            deployResults.clear();
+        deployResults.clear();
 
-            HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
+        HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
 
-            MetadataConnection sourceMetaConn = getMetaConnection(saved.get(source.getText()));
-            MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
-            
+        MetadataConnection sourceMetaConn = getMetaConnection(saved.get(source.getText()));
+        MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
 
-            for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
-
-                String prefix = "";
-                ListMetadataQuery query = new ListMetadataQuery();
-                query.setType(parent.getValue());
-                FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[] {query}, 29.0);
-                prefix = props[0].getNamespacePrefix();
-                if(!"".equals(prefix)) {
-                    prefix += "__";
-                }
-                
-                List<String> children = new ArrayList<>();
-                for (TreeItem<String> child : parent.getChildren()) {
-                    String v = child.getValue();
-                    if(!"".equals(prefix) && v.contains(".")) {
-                        String[] parts = v.split("\\.");
-                        if(parts[0].endsWith("__c")) {
-                            parts[0] = prefix + parts[0];
-                        }
-                        if(parts[1].endsWith("__c")) {
-                            parts[1] = prefix + parts[1];
-                        }
-                        v = parts[0] + "." + parts[1];
-                    }
-                    children.add(v);
-                }
-
-                ReadResult readResult = sourceMetaConn.readMetadata(parent.getValue(), children.toArray(new String[]{}));
-                List<Metadata> metadata = new ArrayList<>();
-                List<DeployResult> resultsList = new ArrayList<>();
-                int i = 0;
-                for(Metadata m : readResult.getRecords()) {
-                    if(m != null) {
-                        m.setFullName(m.getFullName().replace(prefix, ""));
-                        metadata.add(m);
-                    } else {
-                        log.log(Level.WARNING, "Metadata not read! ({0} not created!)", children.get(i));
-                        resultsList.add(new DeployResult(children.get(i), "Metadata not read!"));
-                    }
-                    i++;
-                }
-                
-                if(!metadata.isEmpty()) {
-                    SaveResult[] saveResult = targetMetaConn.createMetadata(metadata.toArray(new Metadata[] {}));
-
-                    for (SaveResult sr : saveResult) {
-                        resultsList.add(new DeployResult(sr));
-                    }
-                }
-
-                deployResults.addAll(resultsList);
+        for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
+            String parentValue = parent.getValue();
+            if (parentValue.startsWith("Apex")) {
+                processApex(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
+            } else {
+                processNormal(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             }
-        } catch (ConnectionException ex) {
-            log.log(Level.INFO, null, ex);
         }
     }
 
@@ -249,9 +213,9 @@ public class MainUIController implements Initializable {
             for (DescribeMetadataObject obj : desc.getMetadataObjects()) {
                 thingsToLoad.add(obj.getXmlName());
                 String[] children = obj.getChildXmlNames();
-                if(children != null && children.length > 0) {
-                    for(String child : Arrays.asList(children)) {
-                        if(child != null) {
+                if (children != null && children.length > 0) {
+                    for (String child : Arrays.asList(children)) {
+                        if (child != null) {
                             thingsToLoad.add(child);
                         }
                     }
@@ -597,5 +561,180 @@ public class MainUIController implements Initializable {
             log.log(Level.INFO, null, ex);
         }
         return null;
+    }
+
+    private void processNormal(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
+        try {
+            String prefix = "";
+            ListMetadataQuery query = new ListMetadataQuery();
+            query.setType(parentValue);
+            FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[]{query}, 29.0);
+            prefix = props[0].getNamespacePrefix();
+            if (!"".equals(prefix)) {
+                prefix += "__";
+            }
+
+            List<String> children = new ArrayList<>();
+            for (TreeItem<String> child : parentChildren) {
+                String v = child.getValue();
+                if (!"".equals(prefix) && v.contains(".")) {
+                    String[] parts = v.split("\\.");
+                    if (parts[0].endsWith("__c")) {
+                        parts[0] = prefix + parts[0];
+                    }
+                    if (parts[1].endsWith("__c")) {
+                        parts[1] = prefix + parts[1];
+                    }
+                    v = parts[0] + "." + parts[1];
+                }
+                children.add(v);
+            }
+
+            ReadResult readResult = sourceMetaConn.readMetadata(parentValue, children.toArray(new String[]{}));
+            List<Metadata> metadata = new ArrayList<>();
+            List<DeployResult> resultsList = new ArrayList<>();
+            int i = 0;
+            for (Metadata m : readResult.getRecords()) {
+                if (m != null) {
+                    m.setFullName(m.getFullName().replace(prefix, ""));
+                    metadata.add(m);
+                } else {
+                    log.log(Level.WARNING, "Metadata not read! ({0} not created!)", children.get(i));
+                    resultsList.add(new DeployResult(children.get(i), "Metadata not read!"));
+                }
+                i++;
+            }
+
+            if (!metadata.isEmpty()) {
+                SaveResult[] saveResult = targetMetaConn.createMetadata(metadata.toArray(new Metadata[]{}));
+
+                for (SaveResult sr : saveResult) {
+                    resultsList.add(new DeployResult(sr));
+                }
+            }
+
+            deployResults.addAll(resultsList);
+        } catch (ConnectionException ex) {
+            log.log(Level.SEVERE, null, ex);
+        }
+    }
+
+    private void processApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
+        try {
+            // one second in milliseconds
+            final long ONE_SECOND = 1000;
+            // maximum number of attempts to retrieve the results
+            final int MAX_NUM_POLL_REQUESTS = 50;
+            // manifest file that controls which components get retrieved
+            final String MANIFEST_FILE = "package.xml";
+            final double API_VERSION = 30.0;
+
+            String prefix = "";
+            ListMetadataQuery query = new ListMetadataQuery();
+            query.setType(parentValue);
+            FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[]{query}, 29.0);
+            prefix = props[0].getNamespacePrefix();
+            if (!"".equals(prefix)) {
+                prefix += "__";
+            }
+
+            List<String> children = new ArrayList<>();
+            for (TreeItem<String> child : parentChildren) {
+                String v = child.getValue();
+                /*if (!"".equals(prefix) && v.contains(".")) {
+                    String[] parts = v.split("\\.");
+                    if (parts[0].endsWith("__c")) {
+                        parts[0] = prefix + parts[0];
+                    }
+                    if (parts[1].endsWith("__c")) {
+                        parts[1] = prefix + parts[1];
+                    }
+                    v = parts[0] + "." + parts[1];
+                }*/
+                children.add(v);
+            }
+
+            PackageTypeMembers ptm = new PackageTypeMembers();
+            ptm.setName(parentValue);
+            ptm.setMembers(children.toArray(new String[]{}));
+
+            com.sforce.soap.metadata.Package p = new com.sforce.soap.metadata.Package();
+            p.setTypes(new PackageTypeMembers[]{ptm});
+            p.setVersion(API_VERSION + "");
+            RetrieveRequest request = new RetrieveRequest();
+            request.setUnpackaged(p);
+
+            // Start the retrieve operation
+            AsyncResult asyncResult = sourceMetaConn.retrieve(request);
+            log.info("asyncResult " + asyncResult.toString());
+            String asyncResultId = asyncResult.getId();
+
+
+            // Wait for the retrieve to complete
+            int poll = 0;
+            long waitTimeMilliSecs = ONE_SECOND;
+            RetrieveResult result = null;
+            do {
+                Thread.sleep(waitTimeMilliSecs);
+                // Double the wait time for the next iteration
+                waitTimeMilliSecs *= 2;
+                if (poll++ > MAX_NUM_POLL_REQUESTS) {
+                    throw new Exception("Request timed out. If this is a large set "
+                            + "of metadata components, check that the time allowed "
+                            + "by MAX_NUM_POLL_REQUESTS is sufficient.");
+                }
+                result = sourceMetaConn.checkRetrieveStatus(
+                        asyncResultId);
+                System.out.println("Retrieve Status: " + result.getStatus());
+            } while (!result.isDone());
+            if (result.getStatus() == RetrieveStatus.Failed) {
+                throw new Exception(result.getErrorStatusCode() + " msg: "
+                        + result.getErrorMessage());
+            } else if (result.getStatus() == RetrieveStatus.Succeeded) {
+                // Print out any warning messages
+                StringBuilder buf = new StringBuilder();
+                if (result.getMessages() != null) {
+                    for (RetrieveMessage rm : result.getMessages()) {
+                        buf.append(rm.getFileName() + " - " + rm.getProblem());
+                    }
+                }
+                if (buf.length() > 0) {
+                    System.out.println("Retrieve warnings:\n" + buf);
+                }
+                // Write the zip to the file system
+                System.out.println("Writing results to zip file");
+                ByteArrayInputStream bais = new ByteArrayInputStream(result.getZipFile());
+                File resultsFile = new File("./tmp/retrieveResults.zip");
+                FileOutputStream os = new FileOutputStream(resultsFile);
+                try {
+                    ReadableByteChannel src = Channels.newChannel(bais);
+                    FileChannel dest = os.getChannel();
+                    copy(src, dest);
+                    System.out.println("Results written to " + resultsFile.getAbsolutePath());
+                } finally {
+                    os.close();
+                }
+            }
+
+        } catch (Exception ex) {
+            log.log(Level.SEVERE, null, ex);
+        }
+    }
+
+    /**
+     * Helper method to copy from a readable channel to a writable channel,
+     * using an in-memory buffer.
+     */
+    private void copy(ReadableByteChannel src, WritableByteChannel dest)
+            throws IOException {
+        // Use an in-memory byte buffer
+        ByteBuffer buffer = ByteBuffer.allocate(8092);
+        while (src.read(buffer) != -1) {
+            buffer.flip();
+            while (buffer.hasRemaining()) {
+                dest.write(buffer);
+            }
+            buffer.clear();
+        }
     }
 }
