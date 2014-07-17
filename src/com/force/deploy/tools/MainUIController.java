@@ -486,11 +486,11 @@ public class MainUIController implements Initializable {
             LoginResult result = part.login(project.username, project.password + project.securityToken);
             config.setServiceEndpoint(result.getServerUrl());
             config.setSessionId(result.getSessionId());
-            part = com.sforce.soap.partner.Connector.newConnection(config);
+            part = new PartnerConnection(config);
 
             config.setServiceEndpoint(result.getMetadataServerUrl());
             config.setSessionId(result.getSessionId());
-            meta = com.sforce.soap.metadata.Connector.newConnection(config);
+            meta = new MetadataConnection(config);
         } catch (ConnectionException ex) {
             log.log(Level.INFO, null, ex);
         }
@@ -556,7 +556,7 @@ public class MainUIController implements Initializable {
 
             config.setServiceEndpoint(result.getMetadataServerUrl());
             config.setSessionId(result.getSessionId());
-            return com.sforce.soap.metadata.Connector.newConnection(config);
+            return new MetadataConnection(config);
         } catch (ConnectionException ex) {
             log.log(Level.INFO, null, ex);
         }
@@ -625,32 +625,29 @@ public class MainUIController implements Initializable {
             final long ONE_SECOND = 1000;
             // maximum number of attempts to retrieve the results
             final int MAX_NUM_POLL_REQUESTS = 50;
-            // manifest file that controls which components get retrieved
-            final String MANIFEST_FILE = "package.xml";
-            final double API_VERSION = 30.0;
+            final double API_VERSION = 31.0;
 
-            String prefix = "";
-            ListMetadataQuery query = new ListMetadataQuery();
-            query.setType(parentValue);
-            FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[]{query}, 29.0);
-            prefix = props[0].getNamespacePrefix();
-            if (!"".equals(prefix)) {
-                prefix += "__";
-            }
-
+            /*String prefix = "";
+             ListMetadataQuery query = new ListMetadataQuery();
+             query.setType(parentValue);
+             FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[]{query}, 29.0);
+             prefix = props[0].getNamespacePrefix();
+             if (!"".equals(prefix)) {
+             prefix += "__";
+             }*/
             List<String> children = new ArrayList<>();
             for (TreeItem<String> child : parentChildren) {
                 String v = child.getValue();
                 /*if (!"".equals(prefix) && v.contains(".")) {
-                    String[] parts = v.split("\\.");
-                    if (parts[0].endsWith("__c")) {
-                        parts[0] = prefix + parts[0];
-                    }
-                    if (parts[1].endsWith("__c")) {
-                        parts[1] = prefix + parts[1];
-                    }
-                    v = parts[0] + "." + parts[1];
-                }*/
+                 String[] parts = v.split("\\.");
+                 if (parts[0].endsWith("__c")) {
+                 parts[0] = prefix + parts[0];
+                 }
+                 if (parts[1].endsWith("__c")) {
+                 parts[1] = prefix + parts[1];
+                 }
+                 v = parts[0] + "." + parts[1];
+                 }*/
                 children.add(v);
             }
 
@@ -668,7 +665,6 @@ public class MainUIController implements Initializable {
             AsyncResult asyncResult = sourceMetaConn.retrieve(request);
             log.info("asyncResult " + asyncResult.toString());
             String asyncResultId = asyncResult.getId();
-
 
             // Wait for the retrieve to complete
             int poll = 0;
