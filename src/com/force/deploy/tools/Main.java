@@ -23,7 +23,7 @@ public class Main extends Application {
         Scene scene = new Scene(root);
         stage.setScene(scene);
         stage.setTitle("Force.com Deploy Tools");
-        stage.setMaximized(true);
+        //stage.setMaximized(true);
         stage.show();
     }
 

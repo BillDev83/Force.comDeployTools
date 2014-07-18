@@ -10,6 +10,8 @@ import com.force.deploy.tools.utils.Project;
 import com.force.deploy.tools.utils.Serializer;
 import com.sforce.soap.metadata.AsyncResult;
 import com.sforce.soap.metadata.DeleteResult;
+import com.sforce.soap.metadata.DeployOptions;
+import com.sforce.soap.metadata.DeployStatus;
 import com.sforce.soap.metadata.DescribeMetadataObject;
 import com.sforce.soap.metadata.DescribeMetadataResult;
 import com.sforce.soap.metadata.FileProperties;
@@ -21,10 +23,10 @@ import com.sforce.soap.metadata.ReadResult;
 import com.sforce.soap.metadata.RetrieveMessage;
 import com.sforce.soap.metadata.RetrieveRequest;
 import com.sforce.soap.metadata.RetrieveResult;
-import com.sforce.soap.metadata.RetrieveStatus;
 import com.sforce.soap.metadata.SaveResult;
 import com.sforce.soap.partner.LoginResult;
 import com.sforce.soap.partner.PartnerConnection;
+import com.sforce.soap.metadata.Package;
 import com.sforce.ws.ConnectionException;
 import com.sforce.ws.ConnectorConfig;
 import java.awt.Desktop;
@@ -95,6 +97,8 @@ public class MainUIController implements Initializable {
     private ComboBox<String> target;
     @FXML
     private Label source;
+    @FXML
+    private Label details;
     @FXML
     private TableView<DeployResult> results;
     @FXML
@@ -655,7 +659,7 @@ public class MainUIController implements Initializable {
             ptm.setName(parentValue);
             ptm.setMembers(children.toArray(new String[]{}));
 
-            com.sforce.soap.metadata.Package p = new com.sforce.soap.metadata.Package();
+            Package p = new Package();
             p.setTypes(new PackageTypeMembers[]{ptm});
             p.setVersion(API_VERSION + "");
             RetrieveRequest request = new RetrieveRequest();
@@ -670,6 +674,9 @@ public class MainUIController implements Initializable {
             int poll = 0;
             long waitTimeMilliSecs = ONE_SECOND;
             RetrieveResult result = null;
+
+            deployResults.clear();
+            
             do {
                 Thread.sleep(waitTimeMilliSecs);
                 // Double the wait time for the next iteration
@@ -679,15 +686,8 @@ public class MainUIController implements Initializable {
                             + "of metadata components, check that the time allowed "
                             + "by MAX_NUM_POLL_REQUESTS is sufficient.");
                 }
-                result = sourceMetaConn.checkRetrieveStatus(
-                        asyncResultId);
-                System.out.println("Retrieve Status: " + result.getStatus());
-            } while (!result.isDone());
-            if (result.getStatus() == RetrieveStatus.Failed) {
-                throw new Exception(result.getErrorStatusCode() + " msg: "
-                        + result.getErrorMessage());
-            } else if (result.getStatus() == RetrieveStatus.Succeeded) {
-                // Print out any warning messages
+                result = sourceMetaConn.checkRetrieveStatus(asyncResultId);
+
                 StringBuilder buf = new StringBuilder();
                 if (result.getMessages() != null) {
                     for (RetrieveMessage rm : result.getMessages()) {
@@ -696,23 +696,66 @@ public class MainUIController implements Initializable {
                 }
                 if (buf.length() > 0) {
                     System.out.println("Retrieve warnings:\n" + buf);
+                    deployResults.add(new DeployResult(parentValue, buf.toString()));
                 }
-                // Write the zip to the file system
-                System.out.println("Writing results to zip file");
-                ByteArrayInputStream bais = new ByteArrayInputStream(result.getZipFile());
-                File resultsFile = new File("./tmp/retrieveResults.zip");
-                FileOutputStream os = new FileOutputStream(resultsFile);
-                try {
-                    ReadableByteChannel src = Channels.newChannel(bais);
-                    FileChannel dest = os.getChannel();
-                    copy(src, dest);
-                    System.out.println("Results written to " + resultsFile.getAbsolutePath());
-                } finally {
-                    os.close();
+                if (result.getZipFile() != null) {
+                    break;
                 }
-            }
+            } while (true);
 
+//            System.out.println("Writing results to zip file");
+//            ByteArrayInputStream bais = new ByteArrayInputStream(result.getZipFile());
+//            File resultsFile = new File("./tmp/retrieveResults.zip");
+//            try (FileOutputStream os = new FileOutputStream(resultsFile)) {
+//                ReadableByteChannel src = Channels.newChannel(bais);
+//                FileChannel dest = os.getChannel();
+//                copy(src, dest);
+//                System.out.println("Results written to " + resultsFile.getAbsolutePath());
+//            }
+            DeployOptions deployOptions = new DeployOptions();
+            deployOptions.setPerformRetrieve(false);
+            deployOptions.setRollbackOnError(true);
+            asyncResult = targetMetaConn.deploy(result.getZipFile(), deployOptions);
+            asyncResultId = asyncResult.getId();
+
+            com.sforce.soap.metadata.DeployResult deployResult = null;
+            boolean fetchDetails;
+            waitTimeMilliSecs = ONE_SECOND;
+            poll = 0;
+            do {
+                Thread.sleep(waitTimeMilliSecs);
+                // double the wait time for the next iteration
+                waitTimeMilliSecs *= 2;
+                if (poll++ > MAX_NUM_POLL_REQUESTS) {
+                    
+                    throw new Exception("Request timed out. If this is a large set "
+                            + "of metadata components, check that the time allowed by "
+                            + "MAX_NUM_POLL_REQUESTS is sufficient.");
+                }
+                // Fetch in-progress details once for every 3 polls
+                fetchDetails = (poll % 3 == 0);
+                deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
+                deployResults.add(new DeployResult(parentValue, "Status: " + deployResult.getStatus()));
+                System.out.println("Status is: " + deployResult.getStatus());
+            } while (!deployResult.isDone());
+            if (!deployResult.isSuccess() && deployResult.getErrorStatusCode() != null) {
+                throw new Exception(deployResult.getErrorStatusCode() + " msg: "
+                        + deployResult.getErrorMessage());
+            }
+            if (!deployResult.isSuccess()) {
+                throw new Exception("The files were not successfully deployed. " + deployResult.getErrorStatusCode() + " msg: "
+                        + deployResult.getErrorMessage());
+            }
+            details.setText(String.format("Details:\nCompleted:%s\nErrors:%s\nDeployed:%s\nTotal:%s\nTest Errors:%s\nCompleted Tests:%s\nTests Total:%s", 
+                    deployResult.getCompletedDate(), deployResult.getNumberComponentErrors(),
+                    deployResult.getNumberComponentsDeployed(),
+                    deployResult.getNumberComponentsTotal(),
+                    deployResult.getNumberTestErrors(),
+                    deployResult.getNumberTestsCompleted(),
+                    deployResult.getNumberTestsTotal()));
+//            System.out.println("The file " + ZIP_FILE + " was successfully deployed");
         } catch (Exception ex) {
+            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
     }

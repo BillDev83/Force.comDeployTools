@@ -62,7 +62,7 @@ public class DeployResult {
     
     public DeployResult(String component, String message) {
         this.component = new SimpleStringProperty(component);
-        statusCode = new SimpleStringProperty("UNKNOWN");
+        statusCode = new SimpleStringProperty("UNKNOWN ERROR");
         this.message = new SimpleStringProperty(message);
         success = new SimpleStringProperty("false");
     }
