@@ -11,13 +11,13 @@ import com.force.deploy.tools.utils.Serializer;
 import com.sforce.soap.metadata.AsyncResult;
 import com.sforce.soap.metadata.DeleteResult;
 import com.sforce.soap.metadata.DeployOptions;
-import com.sforce.soap.metadata.DeployStatus;
 import com.sforce.soap.metadata.DescribeMetadataObject;
 import com.sforce.soap.metadata.DescribeMetadataResult;
 import com.sforce.soap.metadata.FileProperties;
 import com.sforce.soap.metadata.ListMetadataQuery;
 import com.sforce.soap.metadata.Metadata;
 import com.sforce.soap.metadata.MetadataConnection;
+import com.sforce.soap.metadata.Package;
 import com.sforce.soap.metadata.PackageTypeMembers;
 import com.sforce.soap.metadata.ReadResult;
 import com.sforce.soap.metadata.RetrieveMessage;
@@ -26,24 +26,24 @@ import com.sforce.soap.metadata.RetrieveResult;
 import com.sforce.soap.metadata.SaveResult;
 import com.sforce.soap.partner.LoginResult;
 import com.sforce.soap.partner.PartnerConnection;
-import com.sforce.soap.metadata.Package;
+import com.sforce.soap.tooling.SoapConnection;
 import com.sforce.ws.ConnectionException;
 import com.sforce.ws.ConnectorConfig;
 import java.awt.Desktop;
-import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,6 +53,8 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
@@ -134,40 +136,28 @@ public class MainUIController implements Initializable {
         for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
             String parentValue = parent.getValue();
             if (parentValue.startsWith("Apex")) {
-                processApex(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
+                deployApex(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             } else {
-                processNormal(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
+                deployNormal(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             }
         }
     }
 
     @FXML
     private void btnDeleteAction(ActionEvent event) {
-        try {
-            deployResults.clear();
+        deployResults.clear();
+        HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
 
-            HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
+        MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
+        //SoapConnection targetToolConn = getToolConnection(saved.get(target.getSelectionModel().getSelectedItem()));
 
-            MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
-
-            for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
-
-                Set<String> children = new TreeSet<>();
-                for (TreeItem<String> child : parent.getChildren()) {
-                    children.add(child.getValue());
-                }
-
-                DeleteResult[] saveResult = targetMetaConn.deleteMetadata(parent.getValue(), children.toArray(new String[]{}));
-
-                List<DeployResult> resultsList = new ArrayList<>();
-                for (DeleteResult sr : saveResult) {
-                    resultsList.add(new DeployResult(sr));
-                }
-
-                deployResults.addAll(resultsList);
+        for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
+            String parentValue = parent.getValue();
+            if (parentValue.startsWith("Apex")) {
+                deleteApex(parentValue, parent.getChildren(), targetMetaConn);
+            } else {
+                deleteNormal(parentValue, parent.getChildren(), targetMetaConn);
             }
-        } catch (ConnectionException ex) {
-            log.log(Level.INFO, null, ex);
         }
     }
 
@@ -567,7 +557,7 @@ public class MainUIController implements Initializable {
         return null;
     }
 
-    private void processNormal(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
+    private void deployNormal(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
         try {
             String prefix = "";
             ListMetadataQuery query = new ListMetadataQuery();
@@ -623,7 +613,7 @@ public class MainUIController implements Initializable {
         }
     }
 
-    private void processApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
+    private void deployApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
         try {
             // one second in milliseconds
             final long ONE_SECOND = 1000;
@@ -675,8 +665,6 @@ public class MainUIController implements Initializable {
             long waitTimeMilliSecs = ONE_SECOND;
             RetrieveResult result = null;
 
-            deployResults.clear();
-            
             do {
                 Thread.sleep(waitTimeMilliSecs);
                 // Double the wait time for the next iteration
@@ -715,6 +703,8 @@ public class MainUIController implements Initializable {
             DeployOptions deployOptions = new DeployOptions();
             deployOptions.setPerformRetrieve(false);
             deployOptions.setRollbackOnError(true);
+            deployOptions.setPurgeOnDelete(true);
+            deployOptions.setRunAllTests(true);
             asyncResult = targetMetaConn.deploy(result.getZipFile(), deployOptions);
             asyncResultId = asyncResult.getId();
 
@@ -726,17 +716,19 @@ public class MainUIController implements Initializable {
                 Thread.sleep(waitTimeMilliSecs);
                 // double the wait time for the next iteration
                 waitTimeMilliSecs *= 2;
-                if (poll++ > MAX_NUM_POLL_REQUESTS) {
-                    
-                    throw new Exception("Request timed out. If this is a large set "
-                            + "of metadata components, check that the time allowed by "
-                            + "MAX_NUM_POLL_REQUESTS is sufficient.");
-                }
+
                 // Fetch in-progress details once for every 3 polls
                 fetchDetails = (poll % 3 == 0);
                 deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
                 deployResults.add(new DeployResult(parentValue, "Status: " + deployResult.getStatus()));
                 System.out.println("Status is: " + deployResult.getStatus());
+
+                if (poll++ > MAX_NUM_POLL_REQUESTS) {
+
+                    throw new Exception("Request timed out. If this is a large set "
+                            + "of metadata components, check that the time allowed by "
+                            + "MAX_NUM_POLL_REQUESTS is sufficient.");
+                }
             } while (!deployResult.isDone());
             if (!deployResult.isSuccess() && deployResult.getErrorStatusCode() != null) {
                 throw new Exception(deployResult.getErrorStatusCode() + " msg: "
@@ -746,7 +738,7 @@ public class MainUIController implements Initializable {
                 throw new Exception("The files were not successfully deployed. " + deployResult.getErrorStatusCode() + " msg: "
                         + deployResult.getErrorMessage());
             }
-            details.setText(String.format("Details:\nCompleted:%s\nErrors:%s\nDeployed:%s\nTotal:%s\nTest Errors:%s\nCompleted Tests:%s\nTests Total:%s", 
+            details.setText(String.format("Details:\nCompleted:%s\nErrors:%s\nDeployed:%s\nTotal:%s\nTest Errors:%s\nCompleted Tests:%s\nTests Total:%s",
                     deployResult.getCompletedDate(), deployResult.getNumberComponentErrors(),
                     deployResult.getNumberComponentsDeployed(),
                     deployResult.getNumberComponentsTotal(),
@@ -775,5 +767,190 @@ public class MainUIController implements Initializable {
             }
             buffer.clear();
         }
+    }
+
+    private void deleteApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection targetMetaConn) {
+    //private void deleteApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection targetMetaConn, SoapConnection targetToolConn) {
+
+//        try {
+//            Set<String> names = new TreeSet<>();
+//            for (TreeItem<String> item : parentChildren) {
+//                names.add(item.getValue());
+//            }
+//            ReadResult res = targetMetaConn.readMetadata(parentValue, names.toArray(new String[] {}));
+//            for(Metadata m : res.getRecords()) {
+//                
+//            }
+//
+//            if (queryResult.getSize() > 0) {
+//                Set<String> classIds = new TreeSet<String>();
+//                for (SObject so : queryResult.getRecords()) {
+//                    ApexClass apexClass = (ApexClass) so;
+//                    classIds.add(apexClass.getId());
+//                }
+//
+//                com.sforce.soap.tooling.DeleteResult[] results = targetToolConn.delete(classIds.toArray(new String[]{}));
+//                for (com.sforce.soap.tooling.DeleteResult res : results) {
+//                    if (res.getErrors().length > 0) {
+//                        for (com.sforce.soap.tooling.Error e : res.getErrors()) {
+//                            deployResults.add(new DeployResult(parentValue, e.getMessage()));
+//                        }
+//                    } else {
+//                        deployResults.add(new DeployResult(parentValue, "Success!"));
+//                    }
+//                }
+//            }
+//
+//        } catch (ConnectionException ex) {
+//            log.log(Level.SEVERE, null, ex);
+//        }
+        // one second in milliseconds
+        final long ONE_SECOND = 1000;
+        // maximum number of attempts to retrieve the results
+        final int MAX_NUM_POLL_REQUESTS = 50;
+        final double API_VERSION = 31.0;
+
+        File f = new File("./tmp/delete.zip");
+        try {
+            if (!f.getParentFile().exists() && !f.getParentFile().mkdirs()) {
+                f.createNewFile();
+            }
+            StringBuilder sb = new StringBuilder();
+            sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                    + "<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n"
+                    + "<types>\n");
+            for (TreeItem<String> item : parentChildren) {
+                sb.append("<members>").append(item.getValue()).append("</members>\n");
+            }
+            sb.append("<name>").append(parentValue).append("</name>\n"
+                    + "</types>\n"
+                    + "<version>30.0</version>\n"
+                    + "</Package>");
+
+            byte[] data = sb.toString().getBytes();
+            final ZipOutputStream out = new ZipOutputStream(new FileOutputStream(f));
+            ZipEntry e = new ZipEntry("unpackaged/destructiveChanges.xml");
+            out.putNextEntry(e);
+
+            out.write(data, 0, data.length);
+            out.closeEntry();
+
+            e = new ZipEntry("unpackaged/package.xml");
+
+            sb = new StringBuilder();
+            sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                    + "<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n"
+                    + "<version>30.0</version>\n"
+                    + "</Package>");
+
+            data = sb.toString().getBytes();
+            out.putNextEntry(e);
+            out.write(data, 0, data.length);
+            out.closeEntry();
+
+            out.close();
+
+            int len = (int) f.length();
+            FileInputStream fis = new FileInputStream(f);
+            byte[] buffer = new byte[len];
+            fis.read(buffer);
+            byte[] zipFile = Base64.getEncoder().encode(Arrays.copyOf(buffer, len));
+
+            DeployOptions deployOptions = new DeployOptions();
+            deployOptions.setPerformRetrieve(false);
+            deployOptions.setIgnoreWarnings(false);
+            deployOptions.setRollbackOnError(true);
+            deployOptions.setRunAllTests(true);
+            AsyncResult asyncResult = targetMetaConn.deploy(buffer, deployOptions);
+            String asyncResultId = asyncResult.getId();
+
+            com.sforce.soap.metadata.DeployResult deployResult = null;
+            boolean fetchDetails;
+            long waitTimeMilliSecs = ONE_SECOND;
+            int poll = 0;
+            do {
+                Thread.sleep(waitTimeMilliSecs);
+                // double the wait time for the next iteration
+                waitTimeMilliSecs *= 2;
+
+                // Fetch in-progress details once for every 3 polls
+                fetchDetails = (poll % 3 == 0);
+
+                deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
+                deployResults.add(new DeployResult(parentValue, "Status: " + deployResult.getStatus()));
+                System.out.println("Status is: " + deployResult.getStatus());
+
+                if (poll++ > MAX_NUM_POLL_REQUESTS) {
+
+                    throw new Exception("Request timed out. If this is a large set "
+                            + "of metadata components, check that the time allowed by "
+                            + "MAX_NUM_POLL_REQUESTS is sufficient.");
+                }
+            } while (!deployResult.isDone());
+            if (!deployResult.isSuccess() && deployResult.getErrorStatusCode() != null) {
+                throw new Exception(deployResult.getErrorStatusCode() + " msg: "
+                        + deployResult.getErrorMessage());
+            }
+            if (!deployResult.isSuccess()) {
+                throw new Exception("The files were not successfully deployed. " + deployResult.getErrorStatusCode() + " msg: "
+                        + deployResult.getErrorMessage());
+            }
+
+            SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
+            details.setText(String.format("Details:\nCompleted: %s\nErrors: %s\nDeployed: %s\nTotal: %s\nTest Errors: %s\nCompleted Tests: %s\nTests Total: %s",
+                    format.format(deployResult.getCompletedDate().getTime()),
+                    deployResult.getNumberComponentErrors(),
+                    deployResult.getNumberComponentsDeployed(),
+                    deployResult.getNumberComponentsTotal(),
+                    deployResult.getNumberTestErrors(),
+                    deployResult.getNumberTestsCompleted(),
+                    deployResult.getNumberTestsTotal()));
+        } catch (Exception ex) {
+            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
+            log.log(Level.SEVERE, null, ex);
+        }
+    }
+
+    private void deleteNormal(String parentValue, List<TreeItem<String>> children, MetadataConnection targetMetaConn) {
+        try {
+            Set<String> items = new TreeSet<>();
+            for (TreeItem<String> child : children) {
+                items.add(child.getValue());
+            }
+
+            DeleteResult[] saveResult = targetMetaConn.deleteMetadata(parentValue, items.toArray(new String[]{}));
+
+            List<DeployResult> resultsList = new ArrayList<>();
+            for (DeleteResult sr : saveResult) {
+                resultsList.add(new DeployResult(sr));
+            }
+
+            deployResults.addAll(resultsList);
+        } catch (ConnectionException ex) {
+            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
+            log.log(Level.SEVERE, null, ex);
+        }
+    }
+
+    private SoapConnection getToolConnection(Project project) {
+        try {
+            String endPoint = getEndpoint(project.environment, project.instance);
+
+            ConnectorConfig config = new ConnectorConfig();
+            config.setAuthEndpoint(endPoint);
+            config.setServiceEndpoint(endPoint);
+            config.setManualLogin(true);
+
+            PartnerConnection pc = new PartnerConnection(config);
+            LoginResult result = pc.login(project.username, project.password + project.securityToken);
+
+            config.setServiceEndpoint(result.getMetadataServerUrl());
+            config.setSessionId(result.getSessionId());
+            return new SoapConnection(config);
+        } catch (ConnectionException ex) {
+            log.log(Level.INFO, null, ex);
+        }
+        return null;
     }
 }
