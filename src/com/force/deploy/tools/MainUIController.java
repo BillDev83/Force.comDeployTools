@@ -5,7 +5,7 @@
  */
 package com.force.deploy.tools;
 
-import com.force.deploy.tools.utils.DeployResult;
+import com.force.deploy.tools.utils.ResultInfo;
 import com.force.deploy.tools.utils.Project;
 import com.force.deploy.tools.utils.Serializer;
 import com.sforce.soap.metadata.AsyncResult;
@@ -97,7 +97,7 @@ public class MainUIController implements Initializable {
     @FXML
     private Label details;
     @FXML
-    private TableView<DeployResult> results;
+    private TableView<ResultInfo> results;
     @FXML
     private MenuButton loadMeta;
 
@@ -106,7 +106,7 @@ public class MainUIController implements Initializable {
     public static ObservableList<String> projectItems = FXCollections.observableArrayList();
     public static Project selectedProject;
 
-    public static ObservableList<DeployResult> deployResults = FXCollections.observableArrayList();
+    public static ObservableList<ResultInfo> deployResults = FXCollections.observableArrayList();
 
     private PartnerConnection part;
     private MetadataConnection meta;
@@ -174,16 +174,16 @@ public class MainUIController implements Initializable {
 
     private void initResults() {
         results.setEditable(true);
-        TableColumn<DeployResult, String> c1 = new TableColumn<>("Metadata Component");
+        TableColumn<ResultInfo, String> c1 = new TableColumn<>("Metadata Component");
         c1.setCellValueFactory(new PropertyValueFactory<>("component"));
         c1.setMinWidth(200);
-        TableColumn<DeployResult, String> c2 = new TableColumn<>("Status Code");
+        TableColumn<ResultInfo, String> c2 = new TableColumn<>("Status Code");
         c2.setCellValueFactory(new PropertyValueFactory<>("statusCode"));
         c2.setMinWidth(300);
-        TableColumn<DeployResult, String> c3 = new TableColumn<>("Message");
+        TableColumn<ResultInfo, String> c3 = new TableColumn<>("Message");
         c3.setCellValueFactory(new PropertyValueFactory<>("message"));
         c3.setMinWidth(700);
-        TableColumn<DeployResult, String> c4 = new TableColumn<>("Success");
+        TableColumn<ResultInfo, String> c4 = new TableColumn<>("Success");
         c4.setCellValueFactory(new PropertyValueFactory<>("success"));
         c4.setMinWidth(73);
         results.getColumns().addAll(c1, c2, c3, c4);
@@ -577,13 +577,13 @@ public class MainUIController implements Initializable {
             if (!metadata.isEmpty()) {
                 UpsertResult[] saveResult = targetMetaConn.upsertMetadata(metadata.toArray(new Metadata[]{}));
                 for (UpsertResult sr : saveResult) {
-                    deployResults.add(new DeployResult(sr));
+                    deployResults.add(ResultInfo.fromUpsertResult(sr));
                 }
             } else {
-                deployResults.add(new DeployResult(parentValue, "Components not read from source!"));
+                deployResults.add(new ResultInfo(parentValue, "Components not read from source!"));
             }
         } catch (ConnectionException ex) {
-            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
+            deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
     }
@@ -641,7 +641,7 @@ public class MainUIController implements Initializable {
                 }
                 if (buf.length() > 0) {
                     System.out.println("Retrieve warnings:\n" + buf);
-                    deployResults.add(new DeployResult(parentValue, buf.toString()));
+                    deployResults.add(new ResultInfo(parentValue, buf.toString()));
                 }
                 if (result.getZipFile() != null) {
                     break;
@@ -668,7 +668,7 @@ public class MainUIController implements Initializable {
                 // Fetch in-progress details once for every 3 polls
                 fetchDetails = (poll % 3 == 0);
                 deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
-                deployResults.add(new DeployResult(parentValue, "Status: " + deployResult.getStatus()));
+                deployResults.add(new ResultInfo(parentValue, "Status: " + deployResult.getStatus()));
                 System.out.println("Status is: " + deployResult.getStatus());
 
                 if (poll++ > MAX_NUM_POLL_REQUESTS) {
@@ -695,7 +695,7 @@ public class MainUIController implements Initializable {
                     deployResult.getNumberTestsTotal()));
 //            System.out.println("The file " + ZIP_FILE + " was successfully deployed");
         } catch (Exception ex) {
-            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
+            deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
     }
@@ -773,7 +773,7 @@ public class MainUIController implements Initializable {
                 fetchDetails = (poll % 3 == 0);
 
                 deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
-                deployResults.add(new DeployResult(parentValue, "Status: " + deployResult.getStatus()));
+                deployResults.add(new ResultInfo(parentValue, "Status: " + deployResult.getStatus()));
                 System.out.println("Status is: " + deployResult.getStatus());
 
                 if (poll++ > MAX_NUM_POLL_REQUESTS) {
@@ -803,7 +803,7 @@ public class MainUIController implements Initializable {
                     deployResult.getNumberTestsCompleted(),
                     deployResult.getNumberTestsTotal()));
         } catch (Exception ex) {
-            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
+            deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
     }
@@ -817,14 +817,14 @@ public class MainUIController implements Initializable {
 
             DeleteResult[] saveResult = targetMetaConn.deleteMetadata(parentValue, items.toArray(new String[]{}));
 
-            List<DeployResult> resultsList = new ArrayList<>();
+            List<ResultInfo> resultsList = new ArrayList<>();
             for (DeleteResult sr : saveResult) {
-                resultsList.add(new DeployResult(sr));
+                resultsList.add(ResultInfo.fromDeleteResult(sr));
             }
 
             deployResults.addAll(resultsList);
         } catch (ConnectionException ex) {
-            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
+            deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
     }

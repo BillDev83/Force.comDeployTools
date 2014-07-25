@@ -9,58 +9,57 @@ import com.sforce.soap.metadata.DeleteResult;
 import com.sforce.soap.metadata.SaveResult;
 import com.sforce.soap.metadata.UpsertResult;
 import javafx.beans.property.SimpleStringProperty;
+import com.sforce.soap.metadata.Error;
 
 /**
  *
  * @author Daniel
  */
-public class DeployResult {
+public class ResultInfo {
 
     private final SimpleStringProperty component;
     private final SimpleStringProperty statusCode;
     private final SimpleStringProperty message;
     private final SimpleStringProperty success;
 
-    public DeployResult(DeleteResult result) {
-        component = new SimpleStringProperty(result.getFullName());
-        if (!result.isSuccess()) {
-            com.sforce.soap.metadata.Error e = result.getErrors()[0];
-            statusCode = new SimpleStringProperty(e.getStatusCode().toString());
-            message = new SimpleStringProperty(e.getMessage());
-        } else {
-            statusCode = new SimpleStringProperty("OK");
-            message = new SimpleStringProperty("Success!");
-        }
-        success = new SimpleStringProperty(String.valueOf(result.isSuccess()));
+    public ResultInfo(String component, String statusCode, String message, boolean success) {
+        this.component = new SimpleStringProperty(component);
+        this.statusCode = new SimpleStringProperty(statusCode);
+        this.message = new SimpleStringProperty(message);
+        this.success = new SimpleStringProperty(String.valueOf(success));
     }
     
-    public DeployResult(UpsertResult result) {
-        component = new SimpleStringProperty(result.getFullName());
+    public static ResultInfo fromDeleteResult(DeleteResult result) {
+        String statusCode = "OK", message = "Success!";
         if (!result.isSuccess()) {
-            com.sforce.soap.metadata.Error e = result.getErrors()[0];
-            statusCode = new SimpleStringProperty(e.getStatusCode().toString());
-            message = new SimpleStringProperty(e.getMessage());
-        } else {
-            statusCode = new SimpleStringProperty("OK");
-            message = new SimpleStringProperty("Success!");
+            Error e = result.getErrors()[0];
+            statusCode = e.getStatusCode().toString();
+            message = e.getMessage();
         }
-        success = new SimpleStringProperty(String.valueOf(result.isSuccess()));
+        return new ResultInfo(result.getFullName(), statusCode, message, result.isSuccess());
     }
     
-    public DeployResult(SaveResult result) {
-        component = new SimpleStringProperty(result.getFullName());
+    public static ResultInfo fromUpsertResult(UpsertResult result) {
+        String statusCode = "OK", message = "Success!";
         if (!result.isSuccess()) {
-            com.sforce.soap.metadata.Error e = result.getErrors()[0];
-            statusCode = new SimpleStringProperty(e.getStatusCode().toString());
-            message = new SimpleStringProperty(e.getMessage());
-        } else {
-            statusCode = new SimpleStringProperty("OK");
-            message = new SimpleStringProperty("Success!");
+            Error e = result.getErrors()[0];
+            statusCode = e.getStatusCode().toString();
+            message = e.getMessage();
         }
-        success = new SimpleStringProperty(String.valueOf(result.isSuccess()));
+        return new ResultInfo(result.getFullName(), statusCode, message, result.isSuccess());
     }
     
-    public DeployResult(String component, String message) {
+    public static ResultInfo fromSaveResult(SaveResult result) {
+        String statusCode = "OK", message = "Success!";
+        if (!result.isSuccess()) {
+            Error e = result.getErrors()[0];
+            statusCode = e.getStatusCode().toString();
+            message = e.getMessage();
+        }
+        return new ResultInfo(result.getFullName(), statusCode, message, result.isSuccess());
+    }
+    
+    public ResultInfo(String component, String message) {
         this.component = new SimpleStringProperty(component);
         statusCode = new SimpleStringProperty("UNKNOWN");
         this.message = new SimpleStringProperty(message);
