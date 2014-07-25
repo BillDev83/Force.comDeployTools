@@ -23,10 +23,9 @@ import com.sforce.soap.metadata.ReadResult;
 import com.sforce.soap.metadata.RetrieveMessage;
 import com.sforce.soap.metadata.RetrieveRequest;
 import com.sforce.soap.metadata.RetrieveResult;
-import com.sforce.soap.metadata.SaveResult;
+import com.sforce.soap.metadata.UpsertResult;
 import com.sforce.soap.partner.LoginResult;
 import com.sforce.soap.partner.PartnerConnection;
-import com.sforce.soap.tooling.SoapConnection;
 import com.sforce.ws.ConnectionException;
 import com.sforce.ws.ConnectorConfig;
 import java.awt.Desktop;
@@ -37,13 +36,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.ByteBuffer;
-import java.nio.channels.ReadableByteChannel;
-import java.nio.channels.WritableByteChannel;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -149,7 +144,6 @@ public class MainUIController implements Initializable {
         HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
 
         MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
-        //SoapConnection targetToolConn = getToolConnection(saved.get(target.getSelectionModel().getSelectedItem()));
 
         for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
             String parentValue = parent.getValue();
@@ -506,7 +500,7 @@ public class MainUIController implements Initializable {
         return "";
     }
 
-    public static HashMap<String, TreeSet<String>> buildComponents(FileProperties[] props) {
+    public HashMap<String, TreeSet<String>> buildComponents(FileProperties[] props) {
         HashMap<String, TreeSet<String>> ret = new HashMap<>();
         for (FileProperties prop : props) {
             String type = prop.getType();
@@ -515,12 +509,16 @@ public class MainUIController implements Initializable {
                 ret.put(type, new TreeSet<>());
             }
 
-            ret.get(type).add(prop.getFullName());
+            if (prop.getNamespacePrefix() != null) {
+                log.info(prop.getFullName() + " (NOT SUPPORTED)");
+            } else {
+                ret.get(type).add(prop.getFullName());
+            }
         }
         return ret;
     }
 
-    public static HashMap<String, TreeSet<String>> buildSubComponents(FileProperties[] props) {
+    public HashMap<String, TreeSet<String>> buildSubComponents(FileProperties[] props) {
         HashMap<String, TreeSet<String>> ret = new HashMap<>();
         for (FileProperties prop : props) {
             String[] parts = prop.getFullName().split("/");
@@ -531,7 +529,11 @@ public class MainUIController implements Initializable {
                 ret.put(type, new TreeSet<>());
             }
 
-            ret.get(type).add(value);
+            if (prop.getNamespacePrefix() != null) {
+                log.info(value + " (NOT SUPPORTED)");
+            } else {
+                ret.get(type).add(value);
+            }
         }
         return ret;
     }
@@ -559,56 +561,29 @@ public class MainUIController implements Initializable {
 
     private void deployNormal(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
         try {
-            String prefix = "";
-            ListMetadataQuery query = new ListMetadataQuery();
-            query.setType(parentValue);
-            FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[]{query}, 29.0);
-            prefix = props[0].getNamespacePrefix();
-            if (!"".equals(prefix)) {
-                prefix += "__";
-            }
-
             List<String> children = new ArrayList<>();
             for (TreeItem<String> child : parentChildren) {
                 String v = child.getValue();
-                if (!"".equals(prefix) && v.contains(".")) {
-                    String[] parts = v.split("\\.");
-                    if (parts[0].endsWith("__c")) {
-                        parts[0] = prefix + parts[0];
-                    }
-                    if (parts[1].endsWith("__c")) {
-                        parts[1] = prefix + parts[1];
-                    }
-                    v = parts[0] + "." + parts[1];
-                }
                 children.add(v);
             }
 
             ReadResult readResult = sourceMetaConn.readMetadata(parentValue, children.toArray(new String[]{}));
             List<Metadata> metadata = new ArrayList<>();
-            List<DeployResult> resultsList = new ArrayList<>();
-            int i = 0;
             for (Metadata m : readResult.getRecords()) {
                 if (m != null) {
-                    m.setFullName(m.getFullName().replace(prefix, ""));
                     metadata.add(m);
-                } else {
-                    log.log(Level.WARNING, "Metadata not read! ({0} not created!)", children.get(i));
-                    resultsList.add(new DeployResult(children.get(i), "Metadata not read!"));
                 }
-                i++;
             }
-
             if (!metadata.isEmpty()) {
-                SaveResult[] saveResult = targetMetaConn.createMetadata(metadata.toArray(new Metadata[]{}));
-
-                for (SaveResult sr : saveResult) {
-                    resultsList.add(new DeployResult(sr));
+                UpsertResult[] saveResult = targetMetaConn.upsertMetadata(metadata.toArray(new Metadata[]{}));
+                for (UpsertResult sr : saveResult) {
+                    deployResults.add(new DeployResult(sr));
                 }
+            } else {
+                deployResults.add(new DeployResult(parentValue, "Components not read from source!"));
             }
-
-            deployResults.addAll(resultsList);
         } catch (ConnectionException ex) {
+            deployResults.add(new DeployResult(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
     }
@@ -621,27 +596,9 @@ public class MainUIController implements Initializable {
             final int MAX_NUM_POLL_REQUESTS = 50;
             final double API_VERSION = 31.0;
 
-            /*String prefix = "";
-             ListMetadataQuery query = new ListMetadataQuery();
-             query.setType(parentValue);
-             FileProperties[] props = sourceMetaConn.listMetadata(new ListMetadataQuery[]{query}, 29.0);
-             prefix = props[0].getNamespacePrefix();
-             if (!"".equals(prefix)) {
-             prefix += "__";
-             }*/
             List<String> children = new ArrayList<>();
             for (TreeItem<String> child : parentChildren) {
                 String v = child.getValue();
-                /*if (!"".equals(prefix) && v.contains(".")) {
-                 String[] parts = v.split("\\.");
-                 if (parts[0].endsWith("__c")) {
-                 parts[0] = prefix + parts[0];
-                 }
-                 if (parts[1].endsWith("__c")) {
-                 parts[1] = prefix + parts[1];
-                 }
-                 v = parts[0] + "." + parts[1];
-                 }*/
                 children.add(v);
             }
 
@@ -691,15 +648,6 @@ public class MainUIController implements Initializable {
                 }
             } while (true);
 
-//            System.out.println("Writing results to zip file");
-//            ByteArrayInputStream bais = new ByteArrayInputStream(result.getZipFile());
-//            File resultsFile = new File("./tmp/retrieveResults.zip");
-//            try (FileOutputStream os = new FileOutputStream(resultsFile)) {
-//                ReadableByteChannel src = Channels.newChannel(bais);
-//                FileChannel dest = os.getChannel();
-//                copy(src, dest);
-//                System.out.println("Results written to " + resultsFile.getAbsolutePath());
-//            }
             DeployOptions deployOptions = new DeployOptions();
             deployOptions.setPerformRetrieve(false);
             deployOptions.setRollbackOnError(true);
@@ -752,58 +700,7 @@ public class MainUIController implements Initializable {
         }
     }
 
-    /**
-     * Helper method to copy from a readable channel to a writable channel,
-     * using an in-memory buffer.
-     */
-    private void copy(ReadableByteChannel src, WritableByteChannel dest)
-            throws IOException {
-        // Use an in-memory byte buffer
-        ByteBuffer buffer = ByteBuffer.allocate(8092);
-        while (src.read(buffer) != -1) {
-            buffer.flip();
-            while (buffer.hasRemaining()) {
-                dest.write(buffer);
-            }
-            buffer.clear();
-        }
-    }
-
     private void deleteApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection targetMetaConn) {
-    //private void deleteApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection targetMetaConn, SoapConnection targetToolConn) {
-
-//        try {
-//            Set<String> names = new TreeSet<>();
-//            for (TreeItem<String> item : parentChildren) {
-//                names.add(item.getValue());
-//            }
-//            ReadResult res = targetMetaConn.readMetadata(parentValue, names.toArray(new String[] {}));
-//            for(Metadata m : res.getRecords()) {
-//                
-//            }
-//
-//            if (queryResult.getSize() > 0) {
-//                Set<String> classIds = new TreeSet<String>();
-//                for (SObject so : queryResult.getRecords()) {
-//                    ApexClass apexClass = (ApexClass) so;
-//                    classIds.add(apexClass.getId());
-//                }
-//
-//                com.sforce.soap.tooling.DeleteResult[] results = targetToolConn.delete(classIds.toArray(new String[]{}));
-//                for (com.sforce.soap.tooling.DeleteResult res : results) {
-//                    if (res.getErrors().length > 0) {
-//                        for (com.sforce.soap.tooling.Error e : res.getErrors()) {
-//                            deployResults.add(new DeployResult(parentValue, e.getMessage()));
-//                        }
-//                    } else {
-//                        deployResults.add(new DeployResult(parentValue, "Success!"));
-//                    }
-//                }
-//            }
-//
-//        } catch (ConnectionException ex) {
-//            log.log(Level.SEVERE, null, ex);
-//        }
         // one second in milliseconds
         final long ONE_SECOND = 1000;
         // maximum number of attempts to retrieve the results
@@ -854,7 +751,6 @@ public class MainUIController implements Initializable {
             FileInputStream fis = new FileInputStream(f);
             byte[] buffer = new byte[len];
             fis.read(buffer);
-            byte[] zipFile = Base64.getEncoder().encode(Arrays.copyOf(buffer, len));
 
             DeployOptions deployOptions = new DeployOptions();
             deployOptions.setPerformRetrieve(false);
@@ -931,26 +827,5 @@ public class MainUIController implements Initializable {
             deployResults.add(new DeployResult(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
-    }
-
-    private SoapConnection getToolConnection(Project project) {
-        try {
-            String endPoint = getEndpoint(project.environment, project.instance);
-
-            ConnectorConfig config = new ConnectorConfig();
-            config.setAuthEndpoint(endPoint);
-            config.setServiceEndpoint(endPoint);
-            config.setManualLogin(true);
-
-            PartnerConnection pc = new PartnerConnection(config);
-            LoginResult result = pc.login(project.username, project.password + project.securityToken);
-
-            config.setServiceEndpoint(result.getMetadataServerUrl());
-            config.setSessionId(result.getSessionId());
-            return new SoapConnection(config);
-        } catch (ConnectionException ex) {
-            log.log(Level.INFO, null, ex);
-        }
-        return null;
     }
 }
