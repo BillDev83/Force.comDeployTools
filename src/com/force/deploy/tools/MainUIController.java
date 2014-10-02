@@ -5,11 +5,12 @@
  */
 package com.force.deploy.tools;
 
-import com.force.deploy.tools.utils.ResultInfo;
 import com.force.deploy.tools.utils.Project;
+import com.force.deploy.tools.utils.ResultInfo;
 import com.force.deploy.tools.utils.Serializer;
 import com.sforce.soap.metadata.AsyncResult;
 import com.sforce.soap.metadata.DeleteResult;
+import com.sforce.soap.metadata.DeployMessage;
 import com.sforce.soap.metadata.DeployOptions;
 import com.sforce.soap.metadata.DescribeMetadataObject;
 import com.sforce.soap.metadata.DescribeMetadataResult;
@@ -26,6 +27,10 @@ import com.sforce.soap.metadata.RetrieveResult;
 import com.sforce.soap.metadata.UpsertResult;
 import com.sforce.soap.partner.LoginResult;
 import com.sforce.soap.partner.PartnerConnection;
+import com.sforce.soap.tooling.ApexLog;
+import com.sforce.soap.tooling.QueryResult;
+import com.sforce.soap.tooling.SObject;
+import com.sforce.soap.tooling.SoapConnection;
 import com.sforce.ws.ConnectionException;
 import com.sforce.ws.ConnectorConfig;
 import java.awt.Desktop;
@@ -67,11 +72,14 @@ import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.stage.Modality;
@@ -110,6 +118,12 @@ public class MainUIController implements Initializable {
 
     private PartnerConnection part;
     private MetadataConnection meta;
+    @FXML
+    private TextField userSearch;
+    @FXML
+    private ListView<?> usersList;
+    @FXML
+    private TableView<?> debugLogs;
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
@@ -117,8 +131,10 @@ public class MainUIController implements Initializable {
         initMetaSource();
         initMetaTarget();
         initResults();
+        
+        initDebug();
     }
-
+    
     @FXML
     private void btnCreateAction(ActionEvent event) {
         deployResults.clear();
@@ -179,10 +195,10 @@ public class MainUIController implements Initializable {
         c1.setMinWidth(200);
         TableColumn<ResultInfo, String> c2 = new TableColumn<>("Status Code");
         c2.setCellValueFactory(new PropertyValueFactory<>("statusCode"));
-        c2.setMinWidth(300);
+        c2.setMinWidth(200);
         TableColumn<ResultInfo, String> c3 = new TableColumn<>("Message");
         c3.setCellValueFactory(new PropertyValueFactory<>("message"));
-        c3.setMinWidth(700);
+        c3.setMinWidth(500);
         TableColumn<ResultInfo, String> c4 = new TableColumn<>("Success");
         c4.setCellValueFactory(new PropertyValueFactory<>("success"));
         c4.setMinWidth(73);
@@ -441,6 +457,31 @@ public class MainUIController implements Initializable {
                 }
             }
         });
+        MenuItem logMonitor = new MenuItem("Log Monitor");
+        logMonitor.setOnAction(new EventHandler<ActionEvent>() {
+
+            @Override
+            public void handle(ActionEvent event) {
+                try {
+                    Project project = selectedProject;
+
+                    SoapConnection toolingConn = getToolingConnection(project);
+                    String q = "SELECT Id, Application, DurationMilliseconds, Location, LogLength, "
+                            + "LogUserId, Operation, Request, StartTime, Status FROM ApexLog";
+
+                    QueryResult result = toolingConn.query(q);
+
+                    deployResults.clear();
+
+                    for (SObject o : result.getRecords()) {
+                        deployResults.add(new ResultInfo(o.getId(), o.toString()));
+                    }
+
+                } catch (ConnectionException ex) {
+                    log.log(Level.INFO, null, ex);
+                }
+            }
+        });
         MenuItem delete = new MenuItem("Delete");
         delete.setOnAction(new EventHandler<ActionEvent>() {
 
@@ -454,7 +495,7 @@ public class MainUIController implements Initializable {
                 Serializer.serialize(saved, Project.PROJECT_REPOSITORY);
             }
         });
-        contextMenu.getItems().addAll(openWebLink, copyWebLink, delete);
+        contextMenu.getItems().addAll(openWebLink, copyWebLink, logMonitor, delete);
 
         projects.setContextMenu(contextMenu);
     }
@@ -553,6 +594,27 @@ public class MainUIController implements Initializable {
             config.setServiceEndpoint(result.getMetadataServerUrl());
             config.setSessionId(result.getSessionId());
             return new MetadataConnection(config);
+        } catch (ConnectionException ex) {
+            log.log(Level.INFO, null, ex);
+        }
+        return null;
+    }
+
+    private SoapConnection getToolingConnection(Project project) {
+        try {
+            String endPoint = getEndpoint(project.environment, project.instance);
+
+            ConnectorConfig config = new ConnectorConfig();
+            config.setAuthEndpoint(endPoint);
+            config.setServiceEndpoint(endPoint);
+            config.setManualLogin(true);
+
+            PartnerConnection pc = new PartnerConnection(config);
+            LoginResult result = pc.login(project.username, project.password + project.securityToken);
+
+            config.setServiceEndpoint(result.getServerUrl().replace("/Soap/u", "/Soap/T"));
+            config.setSessionId(result.getSessionId());
+            return new SoapConnection(config);
         } catch (ConnectionException ex) {
             log.log(Level.INFO, null, ex);
         }
@@ -668,8 +730,10 @@ public class MainUIController implements Initializable {
                 // Fetch in-progress details once for every 3 polls
                 fetchDetails = (poll % 3 == 0);
                 deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
-                deployResults.add(new ResultInfo(parentValue, "Status: " + deployResult.getStatus()));
-                System.out.println("Status is: " + deployResult.getStatus());
+                for (DeployMessage dm : deployResult.getDetails().getComponentFailures()) {
+                    deployResults.add(new ResultInfo(parentValue, "Status: " + dm.getProblem()));
+                }
+                log.info("Status is: " + deployResult.getStatus());
 
                 if (poll++ > MAX_NUM_POLL_REQUESTS) {
 
@@ -678,6 +742,14 @@ public class MainUIController implements Initializable {
                             + "MAX_NUM_POLL_REQUESTS is sufficient.");
                 }
             } while (!deployResult.isDone());
+            details.setText(String.format("Details:\nCompleted:%s\nErrors:%s\nDeployed:%s\nTotal:%s\nTest Errors:%s\nCompleted Tests:%s\nTests Total:%s",
+                    deployResult.getCompletedDate(), deployResult.getNumberComponentErrors(),
+                    deployResult.getNumberComponentsDeployed(),
+                    deployResult.getNumberComponentsTotal(),
+                    deployResult.getNumberTestErrors(),
+                    deployResult.getNumberTestsCompleted(),
+                    deployResult.getNumberTestsTotal()));
+
             if (!deployResult.isSuccess() && deployResult.getErrorStatusCode() != null) {
                 throw new Exception(deployResult.getErrorStatusCode() + " msg: "
                         + deployResult.getErrorMessage());
@@ -686,14 +758,6 @@ public class MainUIController implements Initializable {
                 throw new Exception("The files were not successfully deployed. " + deployResult.getErrorStatusCode() + " msg: "
                         + deployResult.getErrorMessage());
             }
-            details.setText(String.format("Details:\nCompleted:%s\nErrors:%s\nDeployed:%s\nTotal:%s\nTest Errors:%s\nCompleted Tests:%s\nTests Total:%s",
-                    deployResult.getCompletedDate(), deployResult.getNumberComponentErrors(),
-                    deployResult.getNumberComponentsDeployed(),
-                    deployResult.getNumberComponentsTotal(),
-                    deployResult.getNumberTestErrors(),
-                    deployResult.getNumberTestsCompleted(),
-                    deployResult.getNumberTestsTotal()));
-//            System.out.println("The file " + ZIP_FILE + " was successfully deployed");
         } catch (Exception ex) {
             deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
@@ -774,7 +838,7 @@ public class MainUIController implements Initializable {
 
                 deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
                 deployResults.add(new ResultInfo(parentValue, "Status: " + deployResult.getStatus()));
-                System.out.println("Status is: " + deployResult.getStatus());
+                log.info("Status is: " + deployResult.getStatus());
 
                 if (poll++ > MAX_NUM_POLL_REQUESTS) {
 
@@ -783,14 +847,6 @@ public class MainUIController implements Initializable {
                             + "MAX_NUM_POLL_REQUESTS is sufficient.");
                 }
             } while (!deployResult.isDone());
-            if (!deployResult.isSuccess() && deployResult.getErrorStatusCode() != null) {
-                throw new Exception(deployResult.getErrorStatusCode() + " msg: "
-                        + deployResult.getErrorMessage());
-            }
-            if (!deployResult.isSuccess()) {
-                throw new Exception("The files were not successfully deployed. " + deployResult.getErrorStatusCode() + " msg: "
-                        + deployResult.getErrorMessage());
-            }
 
             SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
@@ -802,6 +858,15 @@ public class MainUIController implements Initializable {
                     deployResult.getNumberTestErrors(),
                     deployResult.getNumberTestsCompleted(),
                     deployResult.getNumberTestsTotal()));
+
+            if (!deployResult.isSuccess() && deployResult.getErrorStatusCode() != null) {
+                throw new Exception(deployResult.getErrorStatusCode() + " msg: "
+                        + deployResult.getErrorMessage());
+            }
+            if (!deployResult.isSuccess()) {
+                throw new Exception("The files were not successfully deployed. " + deployResult.getErrorStatusCode() + " msg: "
+                        + deployResult.getErrorMessage());
+            }
         } catch (Exception ex) {
             deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
@@ -827,5 +892,36 @@ public class MainUIController implements Initializable {
             deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
+    }
+
+    private void initDebug() {
+        
+        userSearch.setOnKeyPressed(new EventHandler<KeyEvent>() {
+
+            @Override
+            public void handle(KeyEvent event) {
+                if(event.getCode().equals(KeyCode.ENTER)) {
+                    HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
+                    
+                    SoapConnection tooling = getToolingConnection(saved.get(source.getText()));
+                    String q = "select id, loguserid, Request, status from apexLog ";
+                    System.out.println(q);
+                    
+                    try {
+                        QueryResult qr = tooling.query(q);
+                        
+                        for(SObject r : qr.getRecords()) {
+                            ApexLog l = (ApexLog) r;
+                            System.out.print(l.getId()+":");
+                            System.out.print(l.getLogUserId()+":");
+                            System.out.print(l.getStatus()+":");
+                            System.out.print(l.getRequest()+"\n");
+                        }
+                    } catch (ConnectionException ex) {
+                        log.log(Level.SEVERE, null, ex);
+                    }
+                }
+            }
+        });
     }
 }
