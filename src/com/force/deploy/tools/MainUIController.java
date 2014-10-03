@@ -5,6 +5,9 @@
  */
 package com.force.deploy.tools;
 
+import com.force.deploy.tools.utils.ConnectionsManager;
+import com.force.deploy.tools.utils.LogItem;
+import com.force.deploy.tools.utils.LogMonitor;
 import com.force.deploy.tools.utils.Project;
 import com.force.deploy.tools.utils.ResultInfo;
 import com.force.deploy.tools.utils.Serializer;
@@ -27,7 +30,8 @@ import com.sforce.soap.metadata.RetrieveResult;
 import com.sforce.soap.metadata.UpsertResult;
 import com.sforce.soap.partner.LoginResult;
 import com.sforce.soap.partner.PartnerConnection;
-import com.sforce.soap.tooling.ApexLog;
+import com.sforce.soap.partner.SearchRecord;
+import com.sforce.soap.partner.SearchResult;
 import com.sforce.soap.tooling.QueryResult;
 import com.sforce.soap.tooling.SObject;
 import com.sforce.soap.tooling.SoapConnection;
@@ -121,9 +125,14 @@ public class MainUIController implements Initializable {
     @FXML
     private TextField userSearch;
     @FXML
-    private ListView<?> usersList;
+    private ListView<String> usersList;
     @FXML
-    private TableView<?> debugLogs;
+    public TableView<LogItem> debugLogs;
+    
+    public static ObservableList<String> userItems = FXCollections.observableArrayList();
+    public static Map<String, String> userItemsRef = new HashMap<>();
+    public static ObservableList<LogItem> logItems = FXCollections.observableArrayList();
+    public static Set<String> logItemIds = new TreeSet<>();
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
@@ -141,8 +150,8 @@ public class MainUIController implements Initializable {
 
         HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
 
-        MetadataConnection sourceMetaConn = getMetaConnection(saved.get(source.getText()));
-        MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
+        MetadataConnection sourceMetaConn = ConnectionsManager.getMetaConnection(saved.get(source.getText()));
+        MetadataConnection targetMetaConn = ConnectionsManager.getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
 
         for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
             String parentValue = parent.getValue();
@@ -159,7 +168,7 @@ public class MainUIController implements Initializable {
         deployResults.clear();
         HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
 
-        MetadataConnection targetMetaConn = getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
+        MetadataConnection targetMetaConn = ConnectionsManager.getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
 
         for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
             String parentValue = parent.getValue();
@@ -411,7 +420,7 @@ public class MainUIController implements Initializable {
                 try {
                     Project project = selectedProject;
 
-                    String endPoint = getEndpoint(project.environment, project.instance);
+                    String endPoint = ConnectionsManager.getEndpoint(project.environment, project.instance);
 
                     ConnectorConfig partConfig = new ConnectorConfig();
                     partConfig.setAuthEndpoint(endPoint);
@@ -437,7 +446,7 @@ public class MainUIController implements Initializable {
                 try {
                     Project project = selectedProject;
 
-                    String endPoint = getEndpoint(project.environment, project.instance);
+                    String endPoint = ConnectionsManager.getEndpoint(project.environment, project.instance);
 
                     ConnectorConfig partConfig = new ConnectorConfig();
                     partConfig.setAuthEndpoint(endPoint);
@@ -465,7 +474,7 @@ public class MainUIController implements Initializable {
                 try {
                     Project project = selectedProject;
 
-                    SoapConnection toolingConn = getToolingConnection(project);
+                    SoapConnection toolingConn = ConnectionsManager.getToolingConnection(project);
                     String q = "SELECT Id, Application, DurationMilliseconds, Location, LogLength, "
                             + "LogUserId, Operation, Request, StartTime, Status FROM ApexLog";
 
@@ -504,7 +513,7 @@ public class MainUIController implements Initializable {
         try {
             Project project = selectedProject;
 
-            String endPoint = getEndpoint(project.environment, project.instance);
+            String endPoint = ConnectionsManager.getEndpoint(project.environment, project.instance);
 
             ConnectorConfig config = new ConnectorConfig();
             config.setAuthEndpoint(endPoint);
@@ -523,22 +532,6 @@ public class MainUIController implements Initializable {
         } catch (ConnectionException ex) {
             log.log(Level.INFO, null, ex);
         }
-    }
-
-    private String getEndpoint(String environment, String instance) {
-        if (null != environment) {
-            switch (environment) {
-                case "Production/Developer Edition":
-                    return "https://login.salesforce.com/services/Soap/u/29.0";
-                case "Sandbox":
-                    return "https://test.salesforce.com/services/Soap/u/29.0";
-                case "Pre-release":
-                    return "";
-                case "Other (Specify)":
-                    return instance;
-            }
-        }
-        return "";
     }
 
     public HashMap<String, TreeSet<String>> buildComponents(FileProperties[] props) {
@@ -579,47 +572,7 @@ public class MainUIController implements Initializable {
         return ret;
     }
 
-    private MetadataConnection getMetaConnection(Project project) {
-        try {
-            String endPoint = getEndpoint(project.environment, project.instance);
-
-            ConnectorConfig config = new ConnectorConfig();
-            config.setAuthEndpoint(endPoint);
-            config.setServiceEndpoint(endPoint);
-            config.setManualLogin(true);
-
-            PartnerConnection pc = new PartnerConnection(config);
-            LoginResult result = pc.login(project.username, project.password + project.securityToken);
-
-            config.setServiceEndpoint(result.getMetadataServerUrl());
-            config.setSessionId(result.getSessionId());
-            return new MetadataConnection(config);
-        } catch (ConnectionException ex) {
-            log.log(Level.INFO, null, ex);
-        }
-        return null;
-    }
-
-    private SoapConnection getToolingConnection(Project project) {
-        try {
-            String endPoint = getEndpoint(project.environment, project.instance);
-
-            ConnectorConfig config = new ConnectorConfig();
-            config.setAuthEndpoint(endPoint);
-            config.setServiceEndpoint(endPoint);
-            config.setManualLogin(true);
-
-            PartnerConnection pc = new PartnerConnection(config);
-            LoginResult result = pc.login(project.username, project.password + project.securityToken);
-
-            config.setServiceEndpoint(result.getServerUrl().replace("/Soap/u", "/Soap/T"));
-            config.setSessionId(result.getSessionId());
-            return new SoapConnection(config);
-        } catch (ConnectionException ex) {
-            log.log(Level.INFO, null, ex);
-        }
-        return null;
-    }
+    
 
     private void deployNormal(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
         try {
@@ -713,8 +666,8 @@ public class MainUIController implements Initializable {
             DeployOptions deployOptions = new DeployOptions();
             deployOptions.setPerformRetrieve(false);
             deployOptions.setRollbackOnError(true);
-            deployOptions.setPurgeOnDelete(true);
-            deployOptions.setRunAllTests(true);
+            //deployOptions.setPurgeOnDelete(true);
+            //deployOptions.setRunAllTests(true);
             asyncResult = targetMetaConn.deploy(result.getZipFile(), deployOptions);
             asyncResultId = asyncResult.getId();
 
@@ -903,25 +856,65 @@ public class MainUIController implements Initializable {
                 if(event.getCode().equals(KeyCode.ENTER)) {
                     HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
                     
-                    SoapConnection tooling = getToolingConnection(saved.get(source.getText()));
-                    String q = "select id, loguserid, Request, status from apexLog ";
-                    System.out.println(q);
+                    PartnerConnection partnerConn = ConnectionsManager.getPartnerConnection(saved.get(source.getText()));
                     
                     try {
-                        QueryResult qr = tooling.query(q);
+                        SearchResult sr = partnerConn.search("FIND {"+userSearch.getText()+"*} IN ALL FIELDS RETURNING User (Id, Name)");
                         
-                        for(SObject r : qr.getRecords()) {
-                            ApexLog l = (ApexLog) r;
-                            System.out.print(l.getId()+":");
-                            System.out.print(l.getLogUserId()+":");
-                            System.out.print(l.getStatus()+":");
-                            System.out.print(l.getRequest()+"\n");
+                        for(SearchRecord r : sr.getSearchRecords()) {
+                            com.sforce.soap.partner.sobject.SObject o = r.getRecord();
+                            
+                            userItems.add((String) o.getField("Name"));
+                            userItemsRef.put((String) o.getField("Name"), (String) o.getField("Id"));
                         }
-                    } catch (ConnectionException ex) {
+                    } catch (Exception ex) {
                         log.log(Level.SEVERE, null, ex);
                     }
                 }
             }
         });
+        
+        usersList.setItems(userItems);
+        
+        debugLogs.setEditable(true);
+        TableColumn<LogItem, String> c1 = new TableColumn<>("Status");
+        c1.setCellValueFactory(new PropertyValueFactory<>("status"));
+        c1.setMinWidth(200);
+        TableColumn<LogItem, String> c2 = new TableColumn<>("Location");
+        c2.setCellValueFactory(new PropertyValueFactory<>("location"));
+        c2.setMinWidth(200);
+        TableColumn<LogItem, String> c3 = new TableColumn<>("Operation");
+        c3.setCellValueFactory(new PropertyValueFactory<>("operation"));
+        c3.setMinWidth(500);
+        TableColumn<LogItem, String> c4 = new TableColumn<>("Request");
+        c4.setCellValueFactory(new PropertyValueFactory<>("request"));
+        c4.setMinWidth(73);
+        debugLogs.getColumns().addAll(c1, c2, c3, c4);
+        debugLogs.setItems(logItems);
+        
+        usersList.setOnMouseClicked(new EventHandler<MouseEvent>() {
+
+            @Override
+            public void handle(MouseEvent event) {
+                if (event.getButton().equals(MouseButton.PRIMARY)) {
+                    if(event.getClickCount() == 2) {
+                        String userName = usersList.getSelectionModel().getSelectedItem();
+                        String uid = userItemsRef.get(userName);
+                        
+                        HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
+                    
+                        SoapConnection toolingConn = ConnectionsManager.getToolingConnection(saved.get(source.getText()));
+                        
+                        String q = "SELECT Id, Status, Location, Operation, Request FROM ApexLog WHERE LogUserId = '"+uid+"'";
+                        
+                        logItems.clear();
+                        
+                        LogMonitor lm = new LogMonitor(q, toolingConn);
+                        lm.start();
+                    }
+                }
+            }
+        });
+        
     }
 }
