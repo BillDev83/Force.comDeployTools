@@ -5,7 +5,11 @@
  */
 package com.force.deploy.tools.utils;
 
+import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javafx.beans.property.SimpleStringProperty;
+import org.apache.http.client.fluent.Request;
 
 /**
  *
@@ -18,7 +22,7 @@ public class LogItem {
     private SimpleStringProperty location;
     private SimpleStringProperty operation;
     private SimpleStringProperty request;
-
+    
     public LogItem(String id, String status, String location, String operation, String request) {
         this.id = new SimpleStringProperty(id);
         this.status = new SimpleStringProperty(status);
@@ -67,4 +71,20 @@ public class LogItem {
         return request.get();
     }
 
+    public String getRawLog(String serviceEndPoint, String sid) {
+        try {
+            serviceEndPoint = serviceEndPoint.replace("/Soap/T/", "/data/v");
+            serviceEndPoint = serviceEndPoint.substring(0, serviceEndPoint.lastIndexOf("/"));
+            serviceEndPoint = serviceEndPoint + "/tooling/sobjects/ApexLog/"+id.get()+"/Body/";
+            
+            System.out.println("End Point: " + serviceEndPoint);
+            String rawLog = Request.Get(serviceEndPoint)
+                    .addHeader("Authorization", "Bearer " + sid)
+                    .execute().returnContent().asString();
+            return rawLog;
+        } catch (Exception ex) {
+            System.out.println("ex" + ex.getMessage());
+            return "";
+        }
+    }
 }

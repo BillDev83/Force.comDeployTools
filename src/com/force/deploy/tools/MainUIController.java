@@ -133,6 +133,8 @@ public class MainUIController implements Initializable {
     public static Map<String, String> userItemsRef = new HashMap<>();
     public static ObservableList<LogItem> logItems = FXCollections.observableArrayList();
     public static Set<String> logItemIds = new TreeSet<>();
+    
+    public static String rawLog = "";
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
@@ -606,7 +608,7 @@ public class MainUIController implements Initializable {
     private void deployApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
         try {
             // one second in milliseconds
-            final long ONE_SECOND = 1000;
+            final long ONE_SECOND = 4000;
             // maximum number of attempts to retrieve the results
             final int MAX_NUM_POLL_REQUESTS = 50;
             final double API_VERSION = 31.0;
@@ -640,7 +642,7 @@ public class MainUIController implements Initializable {
             do {
                 Thread.sleep(waitTimeMilliSecs);
                 // Double the wait time for the next iteration
-                waitTimeMilliSecs *= 2;
+                //waitTimeMilliSecs *= 2;
                 if (poll++ > MAX_NUM_POLL_REQUESTS) {
                     throw new Exception("Request timed out. If this is a large set "
                             + "of metadata components, check that the time allowed "
@@ -678,7 +680,7 @@ public class MainUIController implements Initializable {
             do {
                 Thread.sleep(waitTimeMilliSecs);
                 // double the wait time for the next iteration
-                waitTimeMilliSecs *= 2;
+                //waitTimeMilliSecs *= 2;
 
                 // Fetch in-progress details once for every 3 polls
                 fetchDetails = (poll % 3 == 0);
@@ -719,7 +721,7 @@ public class MainUIController implements Initializable {
 
     private void deleteApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection targetMetaConn) {
         // one second in milliseconds
-        final long ONE_SECOND = 1000;
+        final long ONE_SECOND = 4000;
         // maximum number of attempts to retrieve the results
         final int MAX_NUM_POLL_REQUESTS = 50;
         final double API_VERSION = 31.0;
@@ -784,7 +786,7 @@ public class MainUIController implements Initializable {
             do {
                 Thread.sleep(waitTimeMilliSecs);
                 // double the wait time for the next iteration
-                waitTimeMilliSecs *= 2;
+                //waitTimeMilliSecs *= 2;
 
                 // Fetch in-progress details once for every 3 polls
                 fetchDetails = (poll % 3 == 0);
@@ -854,8 +856,10 @@ public class MainUIController implements Initializable {
             @Override
             public void handle(KeyEvent event) {
                 if(event.getCode().equals(KeyCode.ENTER)) {
-                    HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
+                    userItems.clear();
+                    userItemsRef.clear();
                     
+                    HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
                     PartnerConnection partnerConn = ConnectionsManager.getPartnerConnection(saved.get(source.getText()));
                     
                     try {
@@ -892,6 +896,36 @@ public class MainUIController implements Initializable {
         debugLogs.getColumns().addAll(c1, c2, c3, c4);
         debugLogs.setItems(logItems);
         
+        debugLogs.setOnMouseClicked(new EventHandler<MouseEvent>() {
+
+            @Override
+            public void handle(MouseEvent event) {
+                //throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+                if(event.getButton().equals(MouseButton.PRIMARY)) {
+                    if(event.getClickCount() == 2) {
+                        try {
+                            HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
+                            SoapConnection toolingConn = ConnectionsManager.getToolingConnection(saved.get(source.getText()));
+                            
+                            LogItem item = (LogItem) debugLogs.getSelectionModel().getSelectedItem();
+                            rawLog = item.getRawLog(toolingConn.getConfig().getServiceEndpoint(), toolingConn.getConfig().getSessionId());
+                            
+                            Parent root = FXMLLoader.load(getClass().getResource("/fxml/DebugLog.fxml"));
+                            Scene scene = new Scene(root);
+                            final Stage dialog = new Stage();
+                            dialog.setTitle("Force.com Project");
+                            dialog.initModality(Modality.APPLICATION_MODAL);
+                            dialog.initStyle(StageStyle.UTILITY);
+                            dialog.setScene(scene);
+                            dialog.showAndWait();
+                        } catch (Exception ex) {
+                            log.log(Level.SEVERE, null, ex);
+                        }
+                    }
+                }
+            }
+        });
+        
         usersList.setOnMouseClicked(new EventHandler<MouseEvent>() {
 
             @Override
@@ -909,12 +943,12 @@ public class MainUIController implements Initializable {
                         
                         logItems.clear();
                         
-                        LogMonitor lm = new LogMonitor(q, toolingConn);
+                        LogMonitor lm = LogMonitor.getInstance(q, toolingConn);
+                        lm.monitorUser(uid);
                         lm.start();
                     }
                 }
             }
         });
-        
     }
 }
