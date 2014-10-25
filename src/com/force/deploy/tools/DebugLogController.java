@@ -36,7 +36,7 @@ public class DebugLogController implements Initializable {
     private String stripDebugOutput(String rawLog) {
         String output = "";
 
-        String[] lines = rawLog.split("\r\n");
+        String[] lines = rawLog.split("\n");
         String[] copy = lines;
 
         for (int i = 0; i < lines.length; i++) {
