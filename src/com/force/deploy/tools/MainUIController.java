@@ -396,18 +396,8 @@ public class MainUIController implements Initializable {
                         if (event.getClickCount() == 1) {
                             initLoadMeta();
                         }
-                        if (event.getClickCount() == 2) {
-                            Parent root = FXMLLoader.load(getClass().getResource("/fxml/Credentials.fxml"));
-                            Scene scene = new Scene(root);
-                            final Stage dialog = new Stage();
-                            dialog.setTitle("Force.com Project");
-                            dialog.initModality(Modality.APPLICATION_MODAL);
-                            dialog.initStyle(StageStyle.UTILITY);
-                            dialog.setScene(scene);
-                            dialog.showAndWait();
-                        }
                     }
-                } catch (IOException ex) {
+                } catch (Exception ex) {
                     log.log(Level.INFO, null, ex);
                 }
             }
@@ -493,6 +483,25 @@ public class MainUIController implements Initializable {
                 }
             }
         });
+        MenuItem edit = new MenuItem("Edit");
+        edit.setOnAction(new EventHandler<ActionEvent>() {
+
+            @Override
+            public void handle(ActionEvent event) {
+                try {
+                    Parent root = FXMLLoader.load(getClass().getResource("/fxml/Credentials.fxml"));
+                    Scene scene = new Scene(root);
+                    final Stage dialog = new Stage();
+                    dialog.setTitle("Force.com Project");
+                    dialog.initModality(Modality.APPLICATION_MODAL);
+                    dialog.initStyle(StageStyle.UTILITY);
+                    dialog.setScene(scene);
+                    dialog.showAndWait();
+                } catch(IOException e) {
+                    log.log(Level.SEVERE, null, e);
+                }
+            }
+        });
         MenuItem delete = new MenuItem("Delete");
         delete.setOnAction(new EventHandler<ActionEvent>() {
 
@@ -506,7 +515,7 @@ public class MainUIController implements Initializable {
                 Serializer.serialize(saved, Project.PROJECT_REPOSITORY);
             }
         });
-        contextMenu.getItems().addAll(openWebLink, copyWebLink, logMonitor, delete);
+        contextMenu.getItems().addAll(openWebLink, copyWebLink, logMonitor, edit, delete);
 
         projects.setContextMenu(contextMenu);
     }

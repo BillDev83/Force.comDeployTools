@@ -12,8 +12,10 @@ import java.util.HashMap;
 import java.util.ResourceBundle;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
+import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
@@ -26,12 +28,23 @@ import javafx.stage.Stage;
  */
 public class CredentialsController implements Initializable {
 
+    @FXML
+    private Button btnSave;
+    @FXML
+    private Button btnCancel;
+    @FXML
     private TextField name;
+    @FXML
     private TextField username;
+    @FXML
     private TextField password;
+    @FXML
     private TextField securityToken;
+    @FXML
     private ComboBox<String> environment;
+    @FXML
     private TextField instance;
+    @FXML
     private Label lblInstance;
 
     /**
@@ -77,6 +90,7 @@ public class CredentialsController implements Initializable {
         }
     }
 
+    @FXML
     private void btnSaveAction(ActionEvent event) {
         Project project = new Project(name.getText(), username.getText(), password.getText(),
                 securityToken.getText(), environment.getValue(), instance.getText());
@@ -95,6 +109,7 @@ public class CredentialsController implements Initializable {
         stage.close();
     }
 
+    @FXML
     private void btnCancelAction(ActionEvent event) {
         Node node = (Node) event.getSource();
         Stage stage = (Stage) node.getScene().getWindow();

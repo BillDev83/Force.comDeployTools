@@ -41,10 +41,10 @@ public class LogMonitor extends Thread {
 
     public void monitorUser(String uid) {
         TraceFlag traceFlag = new TraceFlag();
-        traceFlag.setApexCode("Finest");
-        traceFlag.setApexProfiling("Finest");
+        traceFlag.setApexCode("Debug");
+        traceFlag.setApexProfiling("Info");
         traceFlag.setCallout("Info");
-        traceFlag.setDatabase("Finest");
+        traceFlag.setDatabase("Info");
         traceFlag.setSystem("Debug");
         traceFlag.setValidation("Info");
         traceFlag.setVisualforce("Info");

@@ -5,9 +5,6 @@
  */
 package com.force.deploy.tools.utils;
 
-import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import javafx.beans.property.SimpleStringProperty;
 import org.apache.http.client.fluent.Request;
 

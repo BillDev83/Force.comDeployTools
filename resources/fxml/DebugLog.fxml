@@ -6,9 +6,31 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-
-<AnchorPane id="AnchorPane" prefHeight="400.0" prefWidth="600.0" xmlns:fx="http://javafx.com/fxml/1" xmlns="http://javafx.com/javafx/8" fx:controller="com.force.deploy.tools.DebugLogController">
+<AnchorPane id="AnchorPane" prefHeight="600.0" prefWidth="800.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.force.deploy.tools.DebugLogController">
    <children>
-      <TextArea fx:id="rawLog" layoutX="14.0" layoutY="14.0" prefHeight="377.0" prefWidth="576.0" />
+      <TabPane layoutX="14.0" layoutY="14.0" prefHeight="579.0" prefWidth="776.0">
+         <tabs>
+            <Tab text="Raw">
+               <content>
+                  <TextArea fx:id="rawLog" prefHeight="549.0" prefWidth="776.0" />
+               </content>
+            </Tab>
+            <Tab text="Debug Output">
+               <content>
+                  <TextArea fx:id="debugOutput" prefHeight="200.0" prefWidth="200.0" />
+               </content>
+            </Tab>
+            <Tab text="Tree View">
+               <content>
+                  <HBox prefHeight="100.0" prefWidth="200.0">
+                     <children>
+                        <TreeView fx:id="logTree" prefHeight="550.0" prefWidth="290.0" />
+                        <TextArea fx:id="logItem" prefHeight="550.0" prefWidth="489.0" />
+                     </children>
+                  </HBox>
+               </content>
+            </Tab>
+         </tabs>
+      </TabPane>
    </children>
 </AnchorPane>
