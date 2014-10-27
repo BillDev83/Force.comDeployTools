@@ -890,19 +890,25 @@ public class MainUIController implements Initializable {
         usersList.setItems(userItems);
         
         debugLogs.setEditable(true);
-        TableColumn<LogItem, String> c1 = new TableColumn<>("Status");
-        c1.setCellValueFactory(new PropertyValueFactory<>("status"));
-        c1.setMinWidth(200);
-        TableColumn<LogItem, String> c2 = new TableColumn<>("Location");
-        c2.setCellValueFactory(new PropertyValueFactory<>("location"));
-        c2.setMinWidth(200);
-        TableColumn<LogItem, String> c3 = new TableColumn<>("Operation");
-        c3.setCellValueFactory(new PropertyValueFactory<>("operation"));
-        c3.setMinWidth(500);
+        TableColumn<LogItem, String> c1 = new TableColumn<>("Duration");
+        c1.setCellValueFactory(new PropertyValueFactory<>("duration"));
+        c1.setMinWidth(60);
+        TableColumn<LogItem, String> c2 = new TableColumn<>("Log Size");
+        c2.setCellValueFactory(new PropertyValueFactory<>("logSize"));
+        c2.setMinWidth(60);
+        TableColumn<LogItem, String> c3 = new TableColumn<>("Location");
+        c3.setCellValueFactory(new PropertyValueFactory<>("location"));
+        c3.setMinWidth(75);
         TableColumn<LogItem, String> c4 = new TableColumn<>("Request");
         c4.setCellValueFactory(new PropertyValueFactory<>("request"));
-        c4.setMinWidth(73);
-        debugLogs.getColumns().addAll(c1, c2, c3, c4);
+        c4.setMinWidth(75);
+        TableColumn<LogItem, String> c5 = new TableColumn<>("Operation");
+        c5.setCellValueFactory(new PropertyValueFactory<>("operation"));
+        c5.setMinWidth(150);
+        TableColumn<LogItem, String> c6 = new TableColumn<>("Status");
+        c6.setCellValueFactory(new PropertyValueFactory<>("status"));
+        c6.setMinWidth(150);
+        debugLogs.getColumns().addAll(c1, c2, c3, c4, c5, c6);
         debugLogs.setItems(logItems);
         
         debugLogs.setOnMouseClicked(new EventHandler<MouseEvent>() {
@@ -923,7 +929,7 @@ public class MainUIController implements Initializable {
                             Scene scene = new Scene(root);
                             final Stage dialog = new Stage();
                             dialog.setTitle("Force.com Project");
-                            dialog.initModality(Modality.APPLICATION_MODAL);
+                            dialog.initModality(Modality.NONE);
                             dialog.initStyle(StageStyle.UTILITY);
                             dialog.setScene(scene);
                             dialog.showAndWait();
@@ -948,7 +954,9 @@ public class MainUIController implements Initializable {
                     
                         SoapConnection toolingConn = ConnectionsManager.getToolingConnection(saved.get(source.getText()));
                         
-                        String q = "SELECT Id, Status, Location, Operation, Request FROM ApexLog WHERE LogUserId = '"+uid+"'";
+                        String q = "SELECT Id, Application, Status, Location, Operation, "
+                                + "Request, DurationMilliseconds, LogLength FROM ApexLog "
+                                + "WHERE LogUserId = '"+uid+"'";
                         
                         logItems.clear();
                         

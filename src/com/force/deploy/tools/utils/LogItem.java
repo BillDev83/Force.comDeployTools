@@ -19,13 +19,18 @@ public class LogItem {
     private SimpleStringProperty location;
     private SimpleStringProperty operation;
     private SimpleStringProperty request;
-    
-    public LogItem(String id, String status, String location, String operation, String request) {
+    private SimpleStringProperty duration;
+    private SimpleStringProperty logSize;
+
+    public LogItem(String id, String status, String location, String operation,
+            String request, String duration, String logSize) {
         this.id = new SimpleStringProperty(id);
         this.status = new SimpleStringProperty(status);
         this.location = new SimpleStringProperty(location);
         this.operation = new SimpleStringProperty(operation);
         this.request = new SimpleStringProperty(request);
+        this.duration = new SimpleStringProperty(duration);
+        this.logSize = new SimpleStringProperty(logSize);
     }
 
     public void setId(SimpleStringProperty id) {
@@ -48,6 +53,14 @@ public class LogItem {
         this.request = request;
     }
 
+    public void setDuration(SimpleStringProperty duration) {
+        this.duration = duration;
+    }
+
+    public void setLogSize(SimpleStringProperty logSize) {
+        this.logSize = logSize;
+    }
+
     public String getId() {
         return id.get();
     }
@@ -68,13 +81,20 @@ public class LogItem {
         return request.get();
     }
 
+    public String getDuration() {
+        return duration.get();
+    }
+
+    public String getLogSize() {
+        return logSize.get();
+    }
+
     public String getRawLog(String serviceEndPoint, String sid) {
         try {
             serviceEndPoint = serviceEndPoint.replace("/Soap/T/", "/data/v");
             serviceEndPoint = serviceEndPoint.substring(0, serviceEndPoint.lastIndexOf("/"));
-            serviceEndPoint = serviceEndPoint + "/tooling/sobjects/ApexLog/"+id.get()+"/Body/";
-            
-            System.out.println("End Point: " + serviceEndPoint);
+            serviceEndPoint = serviceEndPoint + "/tooling/sobjects/ApexLog/" + id.get() + "/Body/";
+
             String rawLog = Request.Get(serviceEndPoint)
                     .addHeader("Authorization", "Bearer " + sid)
                     .execute().returnContent().asString();

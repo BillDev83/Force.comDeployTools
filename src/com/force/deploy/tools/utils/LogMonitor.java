@@ -17,6 +17,7 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import javafx.application.Platform;
 
 /**
  *
@@ -72,15 +73,24 @@ public class LogMonitor extends Thread {
                     for (String id : MainUIController.logItemIds) {
                         ids.add("\'" + id + "\'");
                     }
-                    query += "AND Id NOT IN (" + String.join(",", ids) + ")";
+                    query += " AND Id NOT IN (" + String.join(",", ids) + ")";
                 }
                 QueryResult qr = toolingConn.query(query);
 
                 for (SObject o : qr.getRecords()) {
                     ApexLog l = (ApexLog) o;
-                    LogItem li = new LogItem(l.getId(), l.getStatus(), l.getLocation(), l.getOperation(), l.getRequest());
-                    MainUIController.logItems.add(li);
-                    MainUIController.logItemIds.add(l.getId());
+                    LogItem li = new LogItem(l.getId(), l.getStatus(), l.getLocation(), 
+                            l.getOperation(), l.getRequest(), l.getDurationMilliseconds().toString(), 
+                            l.getLogLength().toString());
+                    
+                    Platform.runLater(new Runnable() {
+                        @Override
+                        public void run() {
+                           // Update/Query the FX classes here
+                            MainUIController.logItems.add(li);
+                            MainUIController.logItemIds.add(l.getId());
+                        }
+                     });
                 }
 
                 Thread.sleep(5000);
