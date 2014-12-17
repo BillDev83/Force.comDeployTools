@@ -978,7 +978,9 @@ public class MainUIController implements Initializable {
                         
                         LogMonitor lm = LogMonitor.getInstance(q, toolingConn);
                         lm.monitorUser(uid);
-                        lm.start();
+                        if(!lm.isRunning) {
+                            lm.start();
+                        }
                     }
                 }
             }

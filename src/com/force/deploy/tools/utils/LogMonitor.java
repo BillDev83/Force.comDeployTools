@@ -34,6 +34,8 @@ public class LogMonitor extends Thread {
 
     private String query;
     private SoapConnection toolingConn;
+    
+    public boolean isRunning = false;
 
     public static LogMonitor getInstance(String q, SoapConnection toolingConn) {
         Holder.instance.query = q;
@@ -66,7 +68,7 @@ public class LogMonitor extends Thread {
             }
             toolingConn.delete(ids.toArray(new String[] {}));
 
-            toolingConn.create(new SObject[]{traceFlag});
+            toolingConn.create(new SObject[] {traceFlag});
         } catch (ConnectionException ex) {
             log.log(Level.SEVERE, null, ex);
         }
@@ -74,6 +76,7 @@ public class LogMonitor extends Thread {
 
     @Override
     public void run() {
+        isRunning = true;
         while (true) {
             try {
                 String additionalFilter = " AND StartTime > " + Instant.now().minusSeconds(5);
@@ -93,7 +96,7 @@ public class LogMonitor extends Thread {
                 }
 
                 Thread.sleep(5000);
-            } catch (Exception ex) {
+            } catch (ConnectionException | InterruptedException ex) {
                 log.log(Level.INFO, "Query: " + query, ex);
             }
         }
