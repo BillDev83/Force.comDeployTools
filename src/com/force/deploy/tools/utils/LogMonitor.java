@@ -12,6 +12,7 @@ import com.sforce.soap.tooling.SObject;
 import com.sforce.soap.tooling.SoapConnection;
 import com.sforce.soap.tooling.TraceFlag;
 import com.sforce.ws.ConnectionException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.List;
@@ -56,9 +57,16 @@ public class LogMonitor extends Thread {
         traceFlag.setExpirationDate(expirationDate);
         //set the ID of the user to monitor
         traceFlag.setTracedEntityId(uid);
-        
+
         try {
-            toolingConn.create(new SObject[] {traceFlag});
+            QueryResult result = toolingConn.query("SELECT Id FROM TraceFlag WHERE TracedEntityId = '" + uid + "'");
+            List<String> ids = new ArrayList<>();
+            for(SObject o : result.getRecords()) {
+                ids.add(o.getId());
+            }
+            toolingConn.delete(ids.toArray(new String[] {}));
+
+            toolingConn.create(new SObject[]{traceFlag});
         } catch (ConnectionException ex) {
             log.log(Level.SEVERE, null, ex);
         }
@@ -66,37 +74,28 @@ public class LogMonitor extends Thread {
 
     @Override
     public void run() {
-        try {
-            while (true) {
-                if (!MainUIController.logItemIds.isEmpty()) {
-                    List<String> ids = new ArrayList<>();
-                    for (String id : MainUIController.logItemIds) {
-                        ids.add("\'" + id + "\'");
-                    }
-                    query += " AND Id NOT IN (" + String.join(",", ids) + ")";
-                }
-                QueryResult qr = toolingConn.query(query);
+        while (true) {
+            try {
+                String additionalFilter = " AND StartTime > " + Instant.now().minusSeconds(5);
+                //log.log(Level.INFO, "QUERY: " + query + additionalFilter);
+                QueryResult qr = toolingConn.query(query + additionalFilter);
 
                 for (SObject o : qr.getRecords()) {
                     ApexLog l = (ApexLog) o;
-                    LogItem li = new LogItem(l.getId(), l.getStatus(), l.getLocation(), 
-                            l.getOperation(), l.getRequest(), l.getDurationMilliseconds().toString(), 
+                    LogItem li = new LogItem(l.getId(), l.getStatus(), l.getLocation(),
+                            l.getOperation(), l.getRequest(), l.getDurationMilliseconds().toString(),
                             l.getLogLength().toString());
-                    
-                    Platform.runLater(new Runnable() {
-                        @Override
-                        public void run() {
-                           // Update/Query the FX classes here
-                            MainUIController.logItems.add(li);
-                            MainUIController.logItemIds.add(l.getId());
-                        }
-                     });
+
+                    Platform.runLater(() -> {
+                        MainUIController.logItems.add(li);
+                        MainUIController.logItemIds.add(l.getId());
+                    });
                 }
 
                 Thread.sleep(5000);
+            } catch (Exception ex) {
+                log.log(Level.INFO, "Query: " + query, ex);
             }
-        } catch (Exception ex) {
-            log.log(Level.INFO, null, ex);
         }
     }
 }

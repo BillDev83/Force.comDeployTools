@@ -74,6 +74,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -109,9 +110,19 @@ public class MainUIController implements Initializable {
     @FXML
     private Label details;
     @FXML
+    private Label statusLabel;
+    @FXML
+    private ProgressBar progress;
+    @FXML
     private TableView<ResultInfo> results;
     @FXML
     private MenuButton loadMeta;
+    @FXML
+    private TextField userSearch;
+    @FXML
+    private ListView<String> usersList;
+    @FXML
+    public TableView<LogItem> debugLogs;
 
     private static final Logger log = Logger.getLogger(MainUIController.class.getName());
 
@@ -122,12 +133,6 @@ public class MainUIController implements Initializable {
 
     private PartnerConnection part;
     private MetadataConnection meta;
-    @FXML
-    private TextField userSearch;
-    @FXML
-    private ListView<String> usersList;
-    @FXML
-    public TableView<LogItem> debugLogs;
     
     public static ObservableList<String> userItems = FXCollections.observableArrayList();
     public static Map<String, String> userItemsRef = new HashMap<>();
@@ -138,6 +143,8 @@ public class MainUIController implements Initializable {
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
+        progress.setProgress(0);
+        
         initProjects();
         initMetaSource();
         initMetaTarget();
@@ -163,6 +170,11 @@ public class MainUIController implements Initializable {
                 deployNormal(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             }
         }
+    }
+    
+    @FXML
+    private void btnClearLogsAction(ActionEvent event) {
+        logItems.clear();
     }
 
     @FXML
@@ -522,6 +534,7 @@ public class MainUIController implements Initializable {
 
     private void prepareLoad() {
         try {
+            progress.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
             Project project = selectedProject;
 
             String endPoint = ConnectionsManager.getEndpoint(project.environment, project.instance);
@@ -540,9 +553,12 @@ public class MainUIController implements Initializable {
             config.setServiceEndpoint(result.getMetadataServerUrl());
             config.setSessionId(result.getSessionId());
             meta = new MetadataConnection(config);
+            statusLabel.setText("Login successful!");
         } catch (ConnectionException ex) {
             log.log(Level.INFO, null, ex);
+            statusLabel.setText(ex.getMessage());
         }
+        progress.setProgress(0);
     }
 
     public HashMap<String, TreeSet<String>> buildComponents(FileProperties[] props) {

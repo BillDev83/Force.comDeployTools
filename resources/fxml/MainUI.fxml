@@ -10,28 +10,29 @@
 <AnchorPane prefHeight="800.0" prefWidth="1000.0" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.force.deploy.tools.MainUIController">
    <children>
       <Button layoutX="14.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnAddAction" text="Add" />
-      <ListView fx:id="projects" layoutX="14.0" layoutY="39.0" prefHeight="420.0" prefWidth="250.0" />
-      <TreeView fx:id="metaSource" layoutX="272.0" layoutY="39.0" prefHeight="420.0" prefWidth="250.0" />
-      <TreeView fx:id="metaTarget" layoutX="528.0" layoutY="39.0" prefHeight="420.0" prefWidth="250.0" />
+      <ListView fx:id="projects" layoutX="14.0" layoutY="50.0" prefHeight="361.0" prefWidth="250.0" />
+      <TreeView fx:id="metaSource" layoutX="272.0" layoutY="50.0" prefHeight="361.0" prefWidth="250.0" />
+      <TreeView fx:id="metaTarget" layoutX="528.0" layoutY="50.0" prefHeight="361.0" prefWidth="250.0" />
       <ComboBox fx:id="target" layoutX="836.0" layoutY="75.0" prefWidth="150.0" promptText="-- Select --" />
       <Label layoutX="785.0" layoutY="79.0" text="Target:" />
       <Label layoutX="784.0" layoutY="44.0" text="Source:" />
       <Label fx:id="source" layoutX="885.0" layoutY="44.0" />
       <Button layoutX="827.0" layoutY="119.0" mnemonicParsing="false" onAction="#btnCreateAction" text="Create" />
-      <TabPane layoutX="14.0" layoutY="463.0">
+      <TabPane layoutX="14.0" layoutY="434.0">
          <tabs>
-            <Tab text="Deploy Results">
+            <Tab closable="false" text="Deploy Results">
                <content>
                   <TableView fx:id="results" layoutX="14.0" layoutY="491.0" prefHeight="300.0" prefWidth="973.0" />
                </content>
             </Tab>
-            <Tab text="Debug Log Monitor">
+            <Tab closable="false" text="Debug Log Monitor">
               <content>
                 <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
                      <children>
                         <TextField fx:id="userSearch" layoutX="14.0" layoutY="14.0" promptText="Search user" />
                         <ListView fx:id="usersList" layoutX="14.0" layoutY="50.0" prefHeight="239.0" prefWidth="200.0" />
-                        <TableView fx:id="debugLogs" layoutX="225.0" layoutY="14.0" prefHeight="279.0" prefWidth="737.0" />
+                        <TableView fx:id="debugLogs" layoutX="225.0" layoutY="49.0" prefHeight="244.0" prefWidth="737.0" />
+                        <Button layoutX="225.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnClearLogsAction" text="Clear" />
                      </children>
                   </AnchorPane>
               </content>
@@ -40,6 +41,8 @@
       </TabPane>
       <MenuButton fx:id="loadMeta" layoutX="272.0" layoutY="14.0" mnemonicParsing="false" text="-- Select Metadata Type --" />
       <Button layoutX="885.0" layoutY="119.0" mnemonicParsing="false" onAction="#btnDeleteAction" text="Delete" />
-      <Label fx:id="details" layoutX="800.0" layoutY="175.0" prefHeight="259.0" prefWidth="187.0" />
+      <Label fx:id="details" layoutX="792.0" layoutY="152.0" prefHeight="259.0" prefWidth="187.0" />
+      <Label fx:id="statusLabel" layoutX="14.0" layoutY="769.0" prefHeight="17.0" prefWidth="759.0" />
+      <ProgressBar fx:id="progress" layoutX="785.0" layoutY="769.0" prefWidth="200.0" progress="0.0" />
    </children>
 </AnchorPane>
