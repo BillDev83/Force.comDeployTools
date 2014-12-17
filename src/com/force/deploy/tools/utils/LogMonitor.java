@@ -36,7 +36,12 @@ public class LogMonitor extends Thread {
     private SoapConnection toolingConn;
     
     public boolean isRunning = false;
+    public boolean shouldStop = false;
 
+    public static LogMonitor getInstance() {
+        return Holder.instance;
+    }
+    
     public static LogMonitor getInstance(String q, SoapConnection toolingConn) {
         Holder.instance.query = q;
         Holder.instance.toolingConn = toolingConn;
@@ -77,7 +82,8 @@ public class LogMonitor extends Thread {
     @Override
     public void run() {
         isRunning = true;
-        while (true) {
+        int count = 0;
+        while (!shouldStop) {
             try {
                 String additionalFilter = " AND StartTime > " + Instant.now().minusSeconds(5);
                 //log.log(Level.INFO, "QUERY: " + query + additionalFilter);
@@ -94,10 +100,16 @@ public class LogMonitor extends Thread {
                         MainUIController.logItemIds.add(l.getId());
                     });
                 }
-
+                
+                if(count > 240) { // 240 API requests in 20 minutes
+                    break;
+                }
+                
                 Thread.sleep(5000);
+                count++;
             } catch (ConnectionException | InterruptedException ex) {
                 log.log(Level.INFO, "Query: " + query, ex);
+                shouldStop = true;
             }
         }
     }

@@ -154,6 +154,13 @@ public class MainUIController implements Initializable {
     }
     
     @FXML
+    private void btnStopMonitorAction(ActionEvent event) {
+        LogMonitor lm = LogMonitor.getInstance();
+        lm.shouldStop = true;
+        logItems.clear();
+    }
+    
+    @FXML
     private void btnCreateAction(ActionEvent event) {
         deployResults.clear();
 

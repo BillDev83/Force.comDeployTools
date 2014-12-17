@@ -33,6 +33,7 @@
                         <ListView fx:id="usersList" layoutX="14.0" layoutY="50.0" prefHeight="239.0" prefWidth="200.0" />
                         <TableView fx:id="debugLogs" layoutX="225.0" layoutY="49.0" prefHeight="244.0" prefWidth="737.0" />
                         <Button layoutX="225.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnClearLogsAction" text="Clear" />
+                        <Button layoutX="276.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnStopMonitorAction" text="Stop" />
                      </children>
                   </AnchorPane>
               </content>
