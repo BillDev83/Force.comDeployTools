@@ -74,7 +74,6 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
-import javafx.scene.control.ProgressBar;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -112,8 +111,6 @@ public class MainUIController implements Initializable {
     @FXML
     private Label statusLabel;
     @FXML
-    private ProgressBar progress;
-    @FXML
     private TableView<ResultInfo> results;
     @FXML
     private MenuButton loadMeta;
@@ -143,8 +140,6 @@ public class MainUIController implements Initializable {
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
-        progress.setProgress(0);
-        
         initProjects();
         initMetaSource();
         initMetaTarget();
@@ -541,7 +536,6 @@ public class MainUIController implements Initializable {
 
     private void prepareLoad() {
         try {
-            progress.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
             Project project = selectedProject;
 
             String endPoint = ConnectionsManager.getEndpoint(project.environment, project.instance);
@@ -565,7 +559,6 @@ public class MainUIController implements Initializable {
             log.log(Level.INFO, null, ex);
             statusLabel.setText(ex.getMessage());
         }
-        progress.setProgress(0);
     }
 
     public HashMap<String, TreeSet<String>> buildComponents(FileProperties[] props) {

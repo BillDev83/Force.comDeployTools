@@ -37,7 +37,7 @@ public class LogMonitor extends Thread {
     
     public boolean isRunning = false;
     public boolean shouldStop = false;
-
+    
     public static LogMonitor getInstance() {
         return Holder.instance;
     }
@@ -102,6 +102,7 @@ public class LogMonitor extends Thread {
                 }
                 
                 if(count > 240) { // 240 API requests in 20 minutes
+                    log.info("Stopping after 20 minutes/240 API requests.");
                     break;
                 }
                 
