@@ -49,6 +49,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.ResourceBundle;
@@ -209,6 +210,15 @@ public class MainUIController implements Initializable {
             dialog.setScene(scene);
             dialog.showAndWait();
         } catch (IOException ex) {
+            log.log(Level.INFO, null, ex);
+        }
+    }
+    
+    @FXML
+    private void btnClearMetaAction(ActionEvent event) {
+        try {
+            metaTarget.getRoot().getChildren().clear();
+        } catch (Exception ex) {
             log.log(Level.INFO, null, ex);
         }
     }
@@ -608,26 +618,41 @@ public class MainUIController implements Initializable {
                 String v = child.getValue();
                 children.add(v);
             }
-
-            ReadResult readResult = sourceMetaConn.readMetadata(parentValue, children.toArray(new String[]{}));
+            
             List<Metadata> metadata = new ArrayList<>();
-            for (Metadata m : readResult.getRecords()) {
-                if (m != null) {
-                    metadata.add(m);
+            for(List<String> chunk : chunks(children, 10)) {
+                ReadResult readResult = sourceMetaConn.readMetadata(parentValue, chunk.toArray(new String[] {}));
+                for (Metadata m : readResult.getRecords()) {
+                    if (m != null) {
+                        metadata.add(m);
+                    }
                 }
             }
             if (!metadata.isEmpty()) {
-                UpsertResult[] saveResult = targetMetaConn.upsertMetadata(metadata.toArray(new Metadata[]{}));
-                for (UpsertResult sr : saveResult) {
-                    deployResults.add(ResultInfo.fromUpsertResult(sr));
+                for(List<Metadata> chunk : chunks(metadata, 10)) {
+                    UpsertResult[] saveResult = targetMetaConn.upsertMetadata(chunk.toArray(new Metadata[] {}));
+                    for (UpsertResult sr : saveResult) {
+                        deployResults.add(ResultInfo.fromUpsertResult(sr));
+                    }
                 }
             } else {
                 deployResults.add(new ResultInfo(parentValue, "Components not read from source!"));
             }
-        } catch (ConnectionException ex) {
+        } catch (Exception ex) {
             deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
             log.log(Level.SEVERE, null, ex);
         }
+    }
+    
+    private static <T> List<List<T>> chunks(List<T> all,int size){
+        List<List<T>> partitions = new LinkedList<>();
+        
+        for (int i = 0; i < all.size(); i += size) {
+            List<T> chunk = all.subList(i, Math.min(all.size(), i + size));
+            partitions.add(chunk);
+        }
+        
+        return partitions;
     }
 
     private void deployApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
