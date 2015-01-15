@@ -75,6 +75,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
@@ -131,12 +132,12 @@ public class MainUIController implements Initializable {
 
     private PartnerConnection part;
     private MetadataConnection meta;
-    
+
     public static ObservableList<String> userItems = FXCollections.observableArrayList();
     public static Map<String, String> userItemsRef = new HashMap<>();
     public static ObservableList<LogItem> logItems = FXCollections.observableArrayList();
     public static Set<String> logItemIds = new TreeSet<>();
-    
+
     public static String rawLog = "";
 
     @Override
@@ -145,17 +146,17 @@ public class MainUIController implements Initializable {
         initMetaSource();
         initMetaTarget();
         initResults();
-        
+
         initDebug();
     }
-    
+
     @FXML
     private void btnStopMonitorAction(ActionEvent event) {
         LogMonitor lm = LogMonitor.getInstance();
         lm.shouldStop = true;
         logItems.clear();
     }
-    
+
     @FXML
     private void btnCreateAction(ActionEvent event) {
         deployResults.clear();
@@ -167,14 +168,14 @@ public class MainUIController implements Initializable {
 
         for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
             String parentValue = parent.getValue();
-            if (parentValue.startsWith("Apex")) {
+            if (parentValue.startsWith("Apex") || parentValue.startsWith("Document")) {
                 deployApex(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             } else {
                 deployNormal(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             }
         }
     }
-    
+
     @FXML
     private void btnClearLogsAction(ActionEvent event) {
         logItems.clear();
@@ -213,11 +214,69 @@ public class MainUIController implements Initializable {
             log.log(Level.INFO, null, ex);
         }
     }
-    
+
     @FXML
     private void btnClearMetaAction(ActionEvent event) {
         try {
             metaTarget.getRoot().getChildren().clear();
+        } catch (Exception ex) {
+            log.log(Level.INFO, null, ex);
+        }
+    }
+
+    @FXML
+    private void btnAddToTargetAction(ActionEvent event) {
+        try {
+            for (TreeItem<String> item : metaSource.getSelectionModel().getSelectedItems()) {
+                String itemVal = item.getValue();
+                if (item.isLeaf()) {
+                    TreeItem<String> parent = item.getParent();
+                    String parentVal = parent.getValue();
+
+                    TreeItem<String> targetRoot = metaTarget.getRoot();
+                    boolean parentFound = false;
+                    for (TreeItem<String> targetRootChild : targetRoot.getChildren()) {
+                        if (targetRootChild.getValue().equals(parentVal)) {
+                            parentFound = true;
+                            boolean itemFound = false;
+                            for (TreeItem<String> targetChildCell : targetRootChild.getChildren()) {
+                                if (targetChildCell.getValue().equals(itemVal)) {
+                                    itemFound = true;
+                                    break;
+                                }
+                            }
+                            if (!itemFound) {
+                                targetRootChild.getChildren().add(new TreeItem<>(itemVal));
+                            }
+                            break;
+                        }
+                    }
+                    if (!parentFound) {
+                        TreeItem<String> targetParent = new TreeItem<>(parentVal);
+                        targetParent.setExpanded(true);
+                        targetParent.getChildren().add(new TreeItem<>(itemVal));
+                        targetRoot.getChildren().add(targetParent);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            log.log(Level.INFO, null, ex);
+        }
+    }
+
+    @FXML
+    private void btnRemoveFromTargetAction(ActionEvent event) {
+        try {
+            for (TreeItem<String> item : metaTarget.getSelectionModel().getSelectedItems()) {
+                TreeItem<String> parentNode = item.getParent();
+                if (parentNode != null) {
+                    parentNode.getChildren().remove(item);
+                    if(parentNode.getChildren().isEmpty()) {
+                        metaTarget.getRoot().getChildren().remove(parentNode);
+                    }
+                }
+            }
+            metaTarget.getSelectionModel().clearSelection();
         } catch (Exception ex) {
             log.log(Level.INFO, null, ex);
         }
@@ -337,6 +396,7 @@ public class MainUIController implements Initializable {
     private void initMetaTarget() {
         metaTarget.setRoot(new TreeItem<>("Target Metadata"));
         metaTarget.setShowRoot(false);
+        metaTarget.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
         metaTarget.setOnMouseClicked(new EventHandler<MouseEvent>() {
 
@@ -359,6 +419,7 @@ public class MainUIController implements Initializable {
     private void initMetaSource() {
         metaSource.setRoot(new TreeItem<>("Source Metadata"));
         metaSource.setShowRoot(false);
+        metaSource.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
         metaSource.setOnMouseClicked(new EventHandler<MouseEvent>() {
 
@@ -521,7 +582,7 @@ public class MainUIController implements Initializable {
                     dialog.initStyle(StageStyle.UTILITY);
                     dialog.setScene(scene);
                     dialog.showAndWait();
-                } catch(IOException e) {
+                } catch (IOException e) {
                     log.log(Level.SEVERE, null, e);
                 }
             }
@@ -609,8 +670,6 @@ public class MainUIController implements Initializable {
         return ret;
     }
 
-    
-
     private void deployNormal(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
         try {
             List<String> children = new ArrayList<>();
@@ -618,10 +677,10 @@ public class MainUIController implements Initializable {
                 String v = child.getValue();
                 children.add(v);
             }
-            
+
             List<Metadata> metadata = new ArrayList<>();
-            for(List<String> chunk : chunks(children, 10)) {
-                ReadResult readResult = sourceMetaConn.readMetadata(parentValue, chunk.toArray(new String[] {}));
+            for (List<String> chunk : chunks(children, 10)) {
+                ReadResult readResult = sourceMetaConn.readMetadata(parentValue, chunk.toArray(new String[]{}));
                 for (Metadata m : readResult.getRecords()) {
                     if (m != null) {
                         metadata.add(m);
@@ -629,8 +688,8 @@ public class MainUIController implements Initializable {
                 }
             }
             if (!metadata.isEmpty()) {
-                for(List<Metadata> chunk : chunks(metadata, 10)) {
-                    UpsertResult[] saveResult = targetMetaConn.upsertMetadata(chunk.toArray(new Metadata[] {}));
+                for (List<Metadata> chunk : chunks(metadata, 10)) {
+                    UpsertResult[] saveResult = targetMetaConn.upsertMetadata(chunk.toArray(new Metadata[]{}));
                     for (UpsertResult sr : saveResult) {
                         deployResults.add(ResultInfo.fromUpsertResult(sr));
                     }
@@ -643,15 +702,15 @@ public class MainUIController implements Initializable {
             log.log(Level.SEVERE, null, ex);
         }
     }
-    
-    private static <T> List<List<T>> chunks(List<T> all,int size){
+
+    private static <T> List<List<T>> chunks(List<T> all, int size) {
         List<List<T>> partitions = new LinkedList<>();
-        
+
         for (int i = 0; i < all.size(); i += size) {
             List<T> chunk = all.subList(i, Math.min(all.size(), i + size));
             partitions.add(chunk);
         }
-        
+
         return partitions;
     }
 
@@ -900,24 +959,24 @@ public class MainUIController implements Initializable {
     }
 
     private void initDebug() {
-        
+
         userSearch.setOnKeyPressed(new EventHandler<KeyEvent>() {
 
             @Override
             public void handle(KeyEvent event) {
-                if(event.getCode().equals(KeyCode.ENTER)) {
+                if (event.getCode().equals(KeyCode.ENTER)) {
                     userItems.clear();
                     userItemsRef.clear();
-                    
+
                     HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
                     PartnerConnection partnerConn = ConnectionsManager.getPartnerConnection(saved.get(source.getText()));
-                    
+
                     try {
-                        SearchResult sr = partnerConn.search("FIND {"+userSearch.getText()+"*} IN ALL FIELDS RETURNING User (Id, Name)");
-                        
-                        for(SearchRecord r : sr.getSearchRecords()) {
+                        SearchResult sr = partnerConn.search("FIND {" + userSearch.getText() + "*} IN ALL FIELDS RETURNING User (Id, Name)");
+
+                        for (SearchRecord r : sr.getSearchRecords()) {
                             com.sforce.soap.partner.sobject.SObject o = r.getRecord();
-                            
+
                             userItems.add((String) o.getField("Name"));
                             userItemsRef.put((String) o.getField("Name"), (String) o.getField("Id"));
                         }
@@ -927,9 +986,9 @@ public class MainUIController implements Initializable {
                 }
             }
         });
-        
+
         usersList.setItems(userItems);
-        
+
         debugLogs.setEditable(true);
         TableColumn<LogItem, String> c1 = new TableColumn<>("Duration");
         c1.setCellValueFactory(new PropertyValueFactory<>("duration"));
@@ -951,21 +1010,21 @@ public class MainUIController implements Initializable {
         c6.setMinWidth(150);
         debugLogs.getColumns().addAll(c1, c2, c3, c4, c5, c6);
         debugLogs.setItems(logItems);
-        
+
         debugLogs.setOnMouseClicked(new EventHandler<MouseEvent>() {
 
             @Override
             public void handle(MouseEvent event) {
                 //throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-                if(event.getButton().equals(MouseButton.PRIMARY)) {
-                    if(event.getClickCount() == 2) {
+                if (event.getButton().equals(MouseButton.PRIMARY)) {
+                    if (event.getClickCount() == 2) {
                         try {
                             HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
                             SoapConnection toolingConn = ConnectionsManager.getToolingConnection(saved.get(source.getText()));
-                            
+
                             LogItem item = (LogItem) debugLogs.getSelectionModel().getSelectedItem();
                             rawLog = item.getRawLog(toolingConn.getConfig().getServiceEndpoint(), toolingConn.getConfig().getSessionId());
-                            
+
                             Parent root = FXMLLoader.load(getClass().getResource("/fxml/DebugLog.fxml"));
                             Scene scene = new Scene(root);
                             final Stage dialog = new Stage();
@@ -981,29 +1040,29 @@ public class MainUIController implements Initializable {
                 }
             }
         });
-        
+
         usersList.setOnMouseClicked(new EventHandler<MouseEvent>() {
 
             @Override
             public void handle(MouseEvent event) {
                 if (event.getButton().equals(MouseButton.PRIMARY)) {
-                    if(event.getClickCount() == 2) {
+                    if (event.getClickCount() == 2) {
                         String userName = usersList.getSelectionModel().getSelectedItem();
                         String uid = userItemsRef.get(userName);
-                        
+
                         HashMap<String, Project> saved = (HashMap<String, Project>) Serializer.deserialize(Project.PROJECT_REPOSITORY);
-                    
+
                         SoapConnection toolingConn = ConnectionsManager.getToolingConnection(saved.get(source.getText()));
-                        
+
                         String q = "SELECT Id, Application, Status, Location, Operation, "
                                 + "Request, DurationMilliseconds, LogLength FROM ApexLog "
-                                + "WHERE LogUserId = '"+uid+"'";
-                        
+                                + "WHERE LogUserId = '" + uid + "'";
+
                         logItems.clear();
-                        
+
                         LogMonitor lm = LogMonitor.getInstance(q, toolingConn);
                         lm.monitorUser(uid);
-                        if(!lm.isRunning) {
+                        if (!lm.isRunning) {
                             lm.start();
                         }
                     }

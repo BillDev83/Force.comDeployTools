@@ -11,8 +11,8 @@
    <children>
       <Button layoutX="14.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnAddAction" text="Add" />
       <ListView fx:id="projects" layoutX="14.0" layoutY="50.0" prefHeight="361.0" prefWidth="250.0" />
-      <TreeView fx:id="metaSource" layoutX="272.0" layoutY="50.0" prefHeight="361.0" prefWidth="250.0" />
-      <TreeView fx:id="metaTarget" layoutX="528.0" layoutY="50.0" prefHeight="361.0" prefWidth="250.0" />
+      <TreeView fx:id="metaSource" layoutX="272.0" layoutY="50.0" prefHeight="361.0" prefWidth="235.0" />
+      <TreeView fx:id="metaTarget" layoutX="550.0" layoutY="50.0" prefHeight="361.0" prefWidth="235.0" />
       <ComboBox fx:id="target" layoutX="836.0" layoutY="75.0" prefWidth="150.0" promptText="-- Select --" />
       <Label layoutX="785.0" layoutY="79.0" text="Target:" />
       <Label layoutX="784.0" layoutY="44.0" text="Source:" />
@@ -45,6 +45,8 @@
       <Label fx:id="details" layoutX="792.0" layoutY="152.0" prefHeight="259.0" prefWidth="187.0" />
       <Label fx:id="statusLabel" layoutX="14.0" layoutY="769.0" prefHeight="17.0" prefWidth="759.0" />
       <ProgressBar fx:id="progress" layoutX="785.0" layoutY="769.0" prefWidth="200.0" progress="0.0" />
-      <Button layoutX="528.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnClearMetaAction" text="Clear" />
+      <Button layoutX="550.0" layoutY="14.0" mnemonicParsing="false" onAction="#btnClearMetaAction" text="Clear" />
+      <Button layoutX="512.0" layoutY="185.0" mnemonicParsing="false" onAction="#btnAddToTargetAction" text="&gt;&gt;" />
+      <Button layoutX="512.0" layoutY="218.0" mnemonicParsing="false" onAction="#btnRemoveFromTargetAction" text="&lt;&lt;" />
    </children>
 </AnchorPane>
