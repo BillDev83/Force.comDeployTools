@@ -5,6 +5,7 @@
  */
 package com.force.deploy.tools;
 
+import com.force.deploy.tools.utils.ApexDeployer;
 import com.force.deploy.tools.utils.ConnectionsManager;
 import com.force.deploy.tools.utils.LogItem;
 import com.force.deploy.tools.utils.LogMonitor;
@@ -13,7 +14,6 @@ import com.force.deploy.tools.utils.ResultInfo;
 import com.force.deploy.tools.utils.Serializer;
 import com.sforce.soap.metadata.AsyncResult;
 import com.sforce.soap.metadata.DeleteResult;
-import com.sforce.soap.metadata.DeployMessage;
 import com.sforce.soap.metadata.DeployOptions;
 import com.sforce.soap.metadata.DescribeMetadataObject;
 import com.sforce.soap.metadata.DescribeMetadataResult;
@@ -21,12 +21,7 @@ import com.sforce.soap.metadata.FileProperties;
 import com.sforce.soap.metadata.ListMetadataQuery;
 import com.sforce.soap.metadata.Metadata;
 import com.sforce.soap.metadata.MetadataConnection;
-import com.sforce.soap.metadata.Package;
-import com.sforce.soap.metadata.PackageTypeMembers;
 import com.sforce.soap.metadata.ReadResult;
-import com.sforce.soap.metadata.RetrieveMessage;
-import com.sforce.soap.metadata.RetrieveRequest;
-import com.sforce.soap.metadata.RetrieveResult;
 import com.sforce.soap.metadata.UpsertResult;
 import com.sforce.soap.partner.LoginResult;
 import com.sforce.soap.partner.PartnerConnection;
@@ -75,6 +70,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
+import javafx.scene.control.ProgressBar;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
@@ -112,6 +108,7 @@ public class MainUIController implements Initializable {
     private Label details;
     @FXML
     private Label statusLabel;
+    ;
     @FXML
     private TableView<ResultInfo> results;
     @FXML
@@ -139,6 +136,8 @@ public class MainUIController implements Initializable {
     public static Set<String> logItemIds = new TreeSet<>();
 
     public static String rawLog = "";
+    @FXML
+    private ProgressBar progress;
 
     @Override
     public void initialize(URL url, ResourceBundle rb) {
@@ -168,8 +167,15 @@ public class MainUIController implements Initializable {
 
         for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
             String parentValue = parent.getValue();
-            if (parentValue.startsWith("Apex") || parentValue.startsWith("Document")) {
-                deployApex(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
+            if (parentValue.startsWith("Apex")) {
+                details.setText("Preparing deployment...");
+                ApexDeployer ad = ApexDeployer.getInstance(sourceMetaConn, targetMetaConn);
+                ad.prepare(parentValue, parent.getChildren());
+                progress.progressProperty().bind(ad.progressProperty());
+                details.textProperty().bind(ad.messageProperty());
+                if (!ad.isRunning) {
+                    new Thread(ad).start();
+                }
             } else {
                 deployNormal(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             }
@@ -228,36 +234,7 @@ public class MainUIController implements Initializable {
     private void btnAddToTargetAction(ActionEvent event) {
         try {
             for (TreeItem<String> item : metaSource.getSelectionModel().getSelectedItems()) {
-                String itemVal = item.getValue();
-                if (item.isLeaf()) {
-                    TreeItem<String> parent = item.getParent();
-                    String parentVal = parent.getValue();
-
-                    TreeItem<String> targetRoot = metaTarget.getRoot();
-                    boolean parentFound = false;
-                    for (TreeItem<String> targetRootChild : targetRoot.getChildren()) {
-                        if (targetRootChild.getValue().equals(parentVal)) {
-                            parentFound = true;
-                            boolean itemFound = false;
-                            for (TreeItem<String> targetChildCell : targetRootChild.getChildren()) {
-                                if (targetChildCell.getValue().equals(itemVal)) {
-                                    itemFound = true;
-                                    break;
-                                }
-                            }
-                            if (!itemFound) {
-                                targetRootChild.getChildren().add(new TreeItem<>(itemVal));
-                            }
-                            break;
-                        }
-                    }
-                    if (!parentFound) {
-                        TreeItem<String> targetParent = new TreeItem<>(parentVal);
-                        targetParent.setExpanded(true);
-                        targetParent.getChildren().add(new TreeItem<>(itemVal));
-                        targetRoot.getChildren().add(targetParent);
-                    }
-                }
+                addMeta(item);
             }
         } catch (Exception ex) {
             log.log(Level.INFO, null, ex);
@@ -271,7 +248,7 @@ public class MainUIController implements Initializable {
                 TreeItem<String> parentNode = item.getParent();
                 if (parentNode != null) {
                     parentNode.getChildren().remove(item);
-                    if(parentNode.getChildren().isEmpty()) {
+                    if (parentNode.getChildren().isEmpty()) {
                         metaTarget.getRoot().getChildren().remove(parentNode);
                     }
                 }
@@ -427,36 +404,7 @@ public class MainUIController implements Initializable {
             public void handle(MouseEvent event) {
                 if (event.getButton().equals(MouseButton.PRIMARY) && event.getClickCount() == 2) {
                     TreeItem<String> item = metaSource.getSelectionModel().getSelectedItem();
-                    String itemVal = item.getValue();
-                    if (item.isLeaf()) {
-                        TreeItem<String> parent = item.getParent();
-                        String parentVal = parent.getValue();
-
-                        TreeItem<String> targetRoot = metaTarget.getRoot();
-                        boolean parentFound = false;
-                        for (TreeItem<String> targetRootChild : targetRoot.getChildren()) {
-                            if (targetRootChild.getValue().equals(parentVal)) {
-                                parentFound = true;
-                                boolean itemFound = false;
-                                for (TreeItem<String> targetChildCell : targetRootChild.getChildren()) {
-                                    if (targetChildCell.getValue().equals(itemVal)) {
-                                        itemFound = true;
-                                        break;
-                                    }
-                                }
-                                if (!itemFound) {
-                                    targetRootChild.getChildren().add(new TreeItem<>(itemVal));
-                                }
-                                break;
-                            }
-                        }
-                        if (!parentFound) {
-                            TreeItem<String> targetParent = new TreeItem<>(parentVal);
-                            targetParent.setExpanded(true);
-                            targetParent.getChildren().add(new TreeItem<>(itemVal));
-                            targetRoot.getChildren().add(targetParent);
-                        }
-                    }
+                    addMeta(item);
                 }
             }
         });
@@ -714,120 +662,6 @@ public class MainUIController implements Initializable {
         return partitions;
     }
 
-    private void deployApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection sourceMetaConn, MetadataConnection targetMetaConn) {
-        try {
-            // one second in milliseconds
-            final long ONE_SECOND = 4000;
-            // maximum number of attempts to retrieve the results
-            final int MAX_NUM_POLL_REQUESTS = 50;
-            final double API_VERSION = 31.0;
-
-            List<String> children = new ArrayList<>();
-            for (TreeItem<String> child : parentChildren) {
-                String v = child.getValue();
-                children.add(v);
-            }
-
-            PackageTypeMembers ptm = new PackageTypeMembers();
-            ptm.setName(parentValue);
-            ptm.setMembers(children.toArray(new String[]{}));
-
-            Package p = new Package();
-            p.setTypes(new PackageTypeMembers[]{ptm});
-            p.setVersion(API_VERSION + "");
-            RetrieveRequest request = new RetrieveRequest();
-            request.setUnpackaged(p);
-
-            // Start the retrieve operation
-            AsyncResult asyncResult = sourceMetaConn.retrieve(request);
-            log.info("asyncResult " + asyncResult.toString());
-            String asyncResultId = asyncResult.getId();
-
-            // Wait for the retrieve to complete
-            int poll = 0;
-            long waitTimeMilliSecs = ONE_SECOND;
-            RetrieveResult result = null;
-
-            do {
-                Thread.sleep(waitTimeMilliSecs);
-                // Double the wait time for the next iteration
-                //waitTimeMilliSecs *= 2;
-                if (poll++ > MAX_NUM_POLL_REQUESTS) {
-                    throw new Exception("Request timed out. If this is a large set "
-                            + "of metadata components, check that the time allowed "
-                            + "by MAX_NUM_POLL_REQUESTS is sufficient.");
-                }
-                result = sourceMetaConn.checkRetrieveStatus(asyncResultId);
-
-                StringBuilder buf = new StringBuilder();
-                if (result.getMessages() != null) {
-                    for (RetrieveMessage rm : result.getMessages()) {
-                        buf.append(rm.getFileName() + " - " + rm.getProblem());
-                    }
-                }
-                if (buf.length() > 0) {
-                    System.out.println("Retrieve warnings:\n" + buf);
-                    deployResults.add(new ResultInfo(parentValue, buf.toString()));
-                }
-                if (result.getZipFile() != null) {
-                    break;
-                }
-            } while (true);
-
-            DeployOptions deployOptions = new DeployOptions();
-            deployOptions.setPerformRetrieve(false);
-            deployOptions.setRollbackOnError(true);
-            //deployOptions.setPurgeOnDelete(true);
-            //deployOptions.setRunAllTests(true);
-            asyncResult = targetMetaConn.deploy(result.getZipFile(), deployOptions);
-            asyncResultId = asyncResult.getId();
-
-            com.sforce.soap.metadata.DeployResult deployResult = null;
-            boolean fetchDetails;
-            waitTimeMilliSecs = ONE_SECOND;
-            poll = 0;
-            do {
-                Thread.sleep(waitTimeMilliSecs);
-                // double the wait time for the next iteration
-                //waitTimeMilliSecs *= 2;
-
-                // Fetch in-progress details once for every 3 polls
-                fetchDetails = (poll % 3 == 0);
-                deployResult = targetMetaConn.checkDeployStatus(asyncResultId, fetchDetails);
-                for (DeployMessage dm : deployResult.getDetails().getComponentFailures()) {
-                    deployResults.add(new ResultInfo(parentValue, "Status: " + dm.getProblem()));
-                }
-                log.info("Status is: " + deployResult.getStatus());
-
-                if (poll++ > MAX_NUM_POLL_REQUESTS) {
-
-                    throw new Exception("Request timed out. If this is a large set "
-                            + "of metadata components, check that the time allowed by "
-                            + "MAX_NUM_POLL_REQUESTS is sufficient.");
-                }
-            } while (!deployResult.isDone());
-            details.setText(String.format("Details:\nCompleted:%s\nErrors:%s\nDeployed:%s\nTotal:%s\nTest Errors:%s\nCompleted Tests:%s\nTests Total:%s",
-                    deployResult.getCompletedDate(), deployResult.getNumberComponentErrors(),
-                    deployResult.getNumberComponentsDeployed(),
-                    deployResult.getNumberComponentsTotal(),
-                    deployResult.getNumberTestErrors(),
-                    deployResult.getNumberTestsCompleted(),
-                    deployResult.getNumberTestsTotal()));
-
-            if (!deployResult.isSuccess() && deployResult.getErrorStatusCode() != null) {
-                throw new Exception(deployResult.getErrorStatusCode() + " msg: "
-                        + deployResult.getErrorMessage());
-            }
-            if (!deployResult.isSuccess()) {
-                throw new Exception("The files were not successfully deployed. " + deployResult.getErrorStatusCode() + " msg: "
-                        + deployResult.getErrorMessage());
-            }
-        } catch (Exception ex) {
-            deployResults.add(new ResultInfo(parentValue, ex.getMessage()));
-            log.log(Level.SEVERE, null, ex);
-        }
-    }
-
     private void deleteApex(String parentValue, List<TreeItem<String>> parentChildren, MetadataConnection targetMetaConn) {
         // one second in milliseconds
         final long ONE_SECOND = 4000;
@@ -1062,12 +896,52 @@ public class MainUIController implements Initializable {
 
                         LogMonitor lm = LogMonitor.getInstance(q, toolingConn);
                         lm.monitorUser(uid);
+                        progress.progressProperty().bind(lm.progressProperty());
                         if (!lm.isRunning) {
-                            lm.start();
+                            new Thread(lm).start();
                         }
                     }
                 }
             }
         });
+    }
+
+    private void addMeta(TreeItem<String> item) {
+        String itemVal = item.getValue();
+        if (item.isLeaf()) {
+            TreeItem<String> targetRoot = metaTarget.getRoot();
+
+            TreeItem<String> parent = item.getParent();
+            /*TreeItem<String> grandParent = parent.getParent();
+             if(grandParent != null) {
+             targetRoot = new TreeItem<>(grandParent.getValue());
+             targetRoot.getChildren().add(targetRoot);
+             }*/
+            String parentVal = parent.getValue();
+
+            boolean parentFound = false;
+            for (TreeItem<String> targetRootChild : targetRoot.getChildren()) {
+                if (targetRootChild.getValue().equals(parentVal)) {
+                    parentFound = true;
+                    boolean itemFound = false;
+                    for (TreeItem<String> targetChildCell : targetRootChild.getChildren()) {
+                        if (targetChildCell.getValue().equals(itemVal)) {
+                            itemFound = true;
+                            break;
+                        }
+                    }
+                    if (!itemFound) {
+                        targetRootChild.getChildren().add(new TreeItem<>(itemVal));
+                    }
+                    break;
+                }
+            }
+            if (!parentFound) {
+                TreeItem<String> targetParent = new TreeItem<>(parentVal);
+                targetParent.setExpanded(true);
+                targetParent.getChildren().add(new TreeItem<>(itemVal));
+                targetRoot.getChildren().add(targetParent);
+            }
+        }
     }
 }
