@@ -26,7 +26,7 @@ import javafx.scene.control.TreeItem;
  *
  * @author Daniel
  */
-public class ApexDeployer extends Task<Void> {
+public class ApexDeployer extends Task<String> {
 
     private static class Holder {
 
@@ -38,7 +38,7 @@ public class ApexDeployer extends Task<Void> {
     private MetadataConnection sourceMetaConn;
     private MetadataConnection targetMetaConn;
 
-    private String asyncResultId;
+    private List<PackageTypeMembers> typeMembers = new ArrayList<>();
 
     // one second in milliseconds
     final static long ONE_SECOND = 4000;
@@ -47,7 +47,6 @@ public class ApexDeployer extends Task<Void> {
     final static String API_VERSION = "31.0";
 
     public boolean isRunning = false;
-    public boolean shouldStop = false;
 
     public static ApexDeployer getInstance() {
         return Holder.instance;
@@ -57,11 +56,12 @@ public class ApexDeployer extends Task<Void> {
             MetadataConnection targetMetaConn) {
         Holder.instance.sourceMetaConn = sourceMetaConn;
         Holder.instance.targetMetaConn = targetMetaConn;
+        Holder.instance.typeMembers.clear();
         return Holder.instance;
     }
 
     public void prepare(String parentValue, List<TreeItem<String>> parentChildren) {
-        try {
+        
             List<String> children = new ArrayList<>();
             for (TreeItem<String> child : parentChildren) {
                 String v = child.getValue();
@@ -72,8 +72,16 @@ public class ApexDeployer extends Task<Void> {
             ptm.setName(parentValue);
             ptm.setMembers(children.toArray(new String[]{}));
 
+            typeMembers.add(ptm);
+    }
+
+    @Override
+    public String call() {
+        try {
+            updateMessage("Preparing deployment...");
+            
             com.sforce.soap.metadata.Package p = new com.sforce.soap.metadata.Package();
-            p.setTypes(new PackageTypeMembers[]{ptm});
+            p.setTypes(typeMembers.toArray(new PackageTypeMembers[] {}));
             p.setVersion(API_VERSION);
             RetrieveRequest request = new RetrieveRequest();
             request.setUnpackaged(p);
@@ -81,15 +89,9 @@ public class ApexDeployer extends Task<Void> {
             // Start the retrieve operation
             AsyncResult asyncResult = sourceMetaConn.retrieve(request);
             log.info("asyncResult " + asyncResult.toString());
-            asyncResultId = asyncResult.getId();
-        } catch (ConnectionException ex) {
-            log.severe(ex.getMessage());
-        }
-    }
-
-    @Override
-    public Void call() {
-        try {
+            String asyncResultId = asyncResult.getId();
+            
+            
             isRunning = true;
             // Wait for the retrieve to complete
             int poll = 0;
@@ -107,7 +109,7 @@ public class ApexDeployer extends Task<Void> {
                     }
                 }
                 if (buf.length() > 0) {
-                    System.out.println("Retrieve warnings:\n" + buf);
+                   log.info("Retrieve warnings:\n" + buf);
                 }
                 if (result.getZipFile() != null) {
                     break;
@@ -119,7 +121,7 @@ public class ApexDeployer extends Task<Void> {
             deployOptions.setRollbackOnError(true);
             //deployOptions.setPurgeOnDelete(true);
             //deployOptions.setRunAllTests(true);
-            AsyncResult asyncResult = targetMetaConn.deploy(result.getZipFile(), deployOptions);
+            asyncResult = targetMetaConn.deploy(result.getZipFile(), deployOptions);
             asyncResultId = asyncResult.getId();
 
             DeployResult deployResult = null;
@@ -152,7 +154,6 @@ public class ApexDeployer extends Task<Void> {
                     updateProgress(testsCompleted, testsTotal);
                 }
 
-                //statusLabel.setText(status);
                 for (DeployMessage dm : deployResult.getDetails().getComponentFailures()) {
                     log.severe("Component failure: " + dm.getProblem());
                     updateMessage("Component failure: " + dm.getProblem());
@@ -176,19 +177,21 @@ public class ApexDeployer extends Task<Void> {
                     deployResult.getNumberTestsCompleted(),
                     deployResult.getNumberTestsTotal());
             log.info(deployDetails);
-            updateMessage(deployDetails);
+            updateMessage("Deploy ended!");
 
             if (!deployResult.isSuccess()) {
                 updateMessage("Deploy failed: " + deployResult.getErrorMessage());
                 log.log(Level.SEVERE, "Deploy failed with code: {0} msg: {1}",
                         new Object[]{deployResult.getErrorStatusCode(), deployResult.getErrorMessage()});
             }
+            
+            updateProgress(0, 0);
+            isRunning = false;
+            return deployDetails;
         } catch (InterruptedException | ConnectionException ex) {
+            isRunning = false;
             log.severe(ex.getMessage());
-            updateMessage(ex.getMessage());
+            return ex.getMessage();
         }
-
-        updateProgress(0, 0);
-        return null;
     }
 }

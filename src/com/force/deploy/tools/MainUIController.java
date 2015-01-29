@@ -57,6 +57,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.concurrent.WorkerStateEvent;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
@@ -165,20 +166,30 @@ public class MainUIController implements Initializable {
         MetadataConnection sourceMetaConn = ConnectionsManager.getMetaConnection(saved.get(source.getText()));
         MetadataConnection targetMetaConn = ConnectionsManager.getMetaConnection(saved.get(target.getSelectionModel().getSelectedItem()));
 
+        ApexDeployer ad = ApexDeployer.getInstance(sourceMetaConn, targetMetaConn);
+        boolean runApexDeployer = false;
         for (TreeItem<String> parent : metaTarget.getRoot().getChildren()) {
             String parentValue = parent.getValue();
             if (parentValue.startsWith("Apex")) {
-                details.setText("Preparing deployment...");
-                ApexDeployer ad = ApexDeployer.getInstance(sourceMetaConn, targetMetaConn);
-                ad.prepare(parentValue, parent.getChildren());
                 progress.progressProperty().bind(ad.progressProperty());
-                details.textProperty().bind(ad.messageProperty());
-                if (!ad.isRunning) {
-                    new Thread(ad).start();
-                }
+                statusLabel.textProperty().bind(ad.messageProperty());
+                ad.prepare(parentValue, parent.getChildren());
+                runApexDeployer = true;
             } else {
                 deployNormal(parentValue, parent.getChildren(), sourceMetaConn, targetMetaConn);
             }
+        }
+        
+        if(runApexDeployer) {
+            if (!ad.isRunning) {
+                new Thread(ad).start();
+            }
+            ad.setOnSucceeded(new EventHandler<WorkerStateEvent>() {
+                @Override
+                public void handle(WorkerStateEvent event) {
+                    details.setText(ad.getValue());
+                }
+            });
         }
     }
 
