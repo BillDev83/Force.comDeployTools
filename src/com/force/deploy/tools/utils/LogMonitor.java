@@ -20,37 +20,78 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javafx.application.Platform;
+import javafx.concurrent.Service;
 import javafx.concurrent.Task;
 
 /**
  *
  * @author Daniel
  */
-public class LogMonitor extends Task<Void> {
-
-    private static class Holder {
-        static final LogMonitor instance = new LogMonitor();
-    }
+public class LogMonitor extends Service<Void> {
 
     private static final Logger log = Logger.getLogger(LogMonitor.class.getName());
 
-    private String query;
-    private SoapConnection toolingConn;
-    
-    public boolean isRunning = false;
-    public boolean shouldStop = false;
-    
-    public static LogMonitor getInstance() {
-        return Holder.instance;
-    }
-    
-    public static LogMonitor getInstance(String q, SoapConnection toolingConn) {
-        Holder.instance.query = q;
-        Holder.instance.toolingConn = toolingConn;
-        return Holder.instance;
+    private final String query;
+    private final String userId;
+    private final SoapConnection toolingConn;
+
+    public LogMonitor(String q, SoapConnection tc, String uid) {
+        query = q;
+        toolingConn = tc;
+        userId = uid;
     }
 
-    public void monitorUser(String uid) {
+    @Override
+    protected Task<Void> createTask() {
+        return new Task<Void>() {
+            @Override
+            public Void call() {
+                monitorUser(userId);
+                
+                int count = 0;
+                int MAX = 240; // 240 API requests in 20 minutes
+                while (true) {
+                    try {
+                        updateProgress(count, MAX);
+                        String additionalFilter = " AND StartTime > " + Instant.now().minusSeconds(5);
+                        log.log(Level.INFO, "QUERY: " + query + additionalFilter);
+                        QueryResult qr = toolingConn.query(query + additionalFilter);
+
+                        for (SObject o : qr.getRecords()) {
+                            ApexLog l = (ApexLog) o;
+                            LogItem li = new LogItem(l.getId(), l.getStatus(), l.getLocation(),
+                                    l.getOperation(), l.getRequest(), l.getDurationMilliseconds().toString(),
+                                    l.getLogLength().toString());
+
+                            Platform.runLater(() -> {
+                                MainUIController.logItems.add(li);
+                                MainUIController.logItemIds.add(l.getId());
+                            });
+                        }
+
+                        if (count > MAX) {
+                            log.info("Stopping after 20 minutes/240 API requests.");
+                            break;
+                        }
+                        
+                        if(isCancelled()) {
+                            log.info("Monitor cancelled!");
+                            break;
+                        }
+
+                        Thread.sleep(5000);
+                        count++;
+                    } catch (ConnectionException | InterruptedException ex) {
+                        log.log(Level.INFO, "Query: " + query, ex);
+                    }
+                }
+                updateProgress(0, 0);
+                return null;
+            }
+        };
+    }
+    
+    private void monitorUser(String uid) {
         TraceFlag traceFlag = new TraceFlag();
         traceFlag.setApexCode("Debug");
         traceFlag.setApexProfiling("Info");
@@ -70,60 +111,17 @@ public class LogMonitor extends Task<Void> {
         try {
             QueryResult result = toolingConn.query("SELECT Id FROM TraceFlag WHERE TracedEntityId = '" + uid + "'");
             List<String> ids = new ArrayList<>();
-            for(SObject o : result.getRecords()) {
+            for (SObject o : result.getRecords()) {
                 ids.add(o.getId());
             }
-            toolingConn.delete(ids.toArray(new String[] {}));
+            toolingConn.delete(ids.toArray(new String[]{}));
 
-            SaveResult[] results = toolingConn.create(new SObject[] {traceFlag});
-            for(SaveResult r : results) {
+            SaveResult[] results = toolingConn.create(new SObject[]{traceFlag});
+            for (SaveResult r : results) {
                 log.info("Tracing " + uid + "|" + r.getId());
             }
-            
-            updateProgress(1, 1);
         } catch (ConnectionException ex) {
             log.log(Level.SEVERE, null, ex);
-            updateProgress(0, 0);
         }
-    }
-
-    @Override
-    public Void call() {
-        isRunning = true;
-        int count = 0;
-        int MAX = 240; // 240 API requests in 20 minutes
-        while (!shouldStop) {
-            try {
-                updateProgress(count, MAX);
-                String additionalFilter = " AND StartTime > " + Instant.now().minusSeconds(5);
-                log.log(Level.INFO, "QUERY: " + query + additionalFilter);
-                QueryResult qr = toolingConn.query(query + additionalFilter);
-
-                for (SObject o : qr.getRecords()) {
-                    ApexLog l = (ApexLog) o;
-                    LogItem li = new LogItem(l.getId(), l.getStatus(), l.getLocation(),
-                            l.getOperation(), l.getRequest(), l.getDurationMilliseconds().toString(),
-                            l.getLogLength().toString());
-
-                    Platform.runLater(() -> {
-                        MainUIController.logItems.add(li);
-                        MainUIController.logItemIds.add(l.getId());
-                    });
-                }
-                
-                if(count > MAX) {
-                    log.info("Stopping after 20 minutes/240 API requests.");
-                    break;
-                }
-                
-                Thread.sleep(5000);
-                count++;
-            } catch (ConnectionException | InterruptedException ex) {
-                log.log(Level.INFO, "Query: " + query, ex);
-                shouldStop = true;
-            }
-        }
-        updateProgress(0, 0);
-        return null;
     }
 }

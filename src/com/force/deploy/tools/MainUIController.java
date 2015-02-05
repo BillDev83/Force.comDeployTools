@@ -65,6 +65,7 @@ import javafx.fxml.FXMLLoader;
 import javafx.fxml.Initializable;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
@@ -109,7 +110,10 @@ public class MainUIController implements Initializable {
     private Label details;
     @FXML
     private Label statusLabel;
-    ;
+    @FXML
+    private Button btnStopMonitor;
+    @FXML
+    private Button btnCancelDeploy;
     @FXML
     private TableView<ResultInfo> results;
     @FXML
@@ -151,13 +155,6 @@ public class MainUIController implements Initializable {
     }
 
     @FXML
-    private void btnStopMonitorAction(ActionEvent event) {
-        LogMonitor lm = LogMonitor.getInstance();
-        lm.shouldStop = true;
-        logItems.clear();
-    }
-
-    @FXML
     private void btnCreateAction(ActionEvent event) {
         deployResults.clear();
 
@@ -181,15 +178,21 @@ public class MainUIController implements Initializable {
         }
         
         if(runApexDeployer) {
-            if (!ad.isRunning) {
-                new Thread(ad).start();
-            }
-            ad.setOnSucceeded(new EventHandler<WorkerStateEvent>() {
+            ad.setOnSucceeded((WorkerStateEvent event1) -> {
+                details.setText(ad.getValue());
+                statusLabel.textProperty().unbind();
+            });
+            btnCancelDeploy.setOnAction(new EventHandler<ActionEvent>() {
+
                 @Override
-                public void handle(WorkerStateEvent event) {
-                    details.setText(ad.getValue());
+                public void handle(ActionEvent event) {
+                    ad.cancel();
                 }
             });
+            if(!ad.isRunning()) {
+                ad.reset();
+                ad.start();
+            }
         }
     }
 
@@ -905,11 +908,19 @@ public class MainUIController implements Initializable {
 
                         logItems.clear();
 
-                        LogMonitor lm = LogMonitor.getInstance(q, toolingConn);
-                        lm.monitorUser(uid);
+                        LogMonitor lm = new LogMonitor(q, toolingConn, uid);
                         progress.progressProperty().bind(lm.progressProperty());
-                        if (!lm.isRunning) {
-                            new Thread(lm).start();
+                        btnStopMonitor.setOnAction(new EventHandler<ActionEvent>() {
+                            @Override
+                            public void handle(ActionEvent event) {
+                                //throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+                                lm.cancel();
+                                logItems.clear();
+                            }
+                        });
+                        if (!lm.isRunning()) {
+                            lm.reset();
+                            lm.start();
                         }
                     }
                 }
