@@ -604,7 +604,7 @@ public class MainUIController implements Initializable {
             }
 
             if (prop.getNamespacePrefix() != null) {
-                log.info(prop.getFullName() + " (NOT SUPPORTED)");
+                //log.info(prop.getFullName() + " (NOT SUPPORTED)");
             } else {
                 ret.get(type).add(prop.getFullName());
             }
